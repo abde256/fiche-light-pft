@@ -871,30 +871,35 @@ function handleImageFile(file) {
 
   const reader = new FileReader();
   reader.onload = e => {
-    const dataURL = e.target.result;
-    imgOriginalBase64 = dataURL.split(',')[1];
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1500;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const resizedDataURL = canvas.toDataURL('image/jpeg', 0.92);
+      imgOriginalBase64 = resizedDataURL.split(',')[1];
 
-    // Afficher l'original
-    document.getElementById('imgOriginal').src = dataURL;
-    document.getElementById('imgOrigMeta').textContent =
-      `${file.name} · ${(file.size / 1024).toFixed(0)} Ko`;
+      document.getElementById('imgOriginal').src = resizedDataURL;
+      document.getElementById('imgOrigMeta').textContent = `${file.name} · ${(file.size / 1024).toFixed(0)} Ko`;
 
-    // Réinitialiser le résultat
-    setResultState('empty');
-    document.getElementById('imgResultEmpty').textContent = 'Cliquez sur "Traiter l\'image"';
-    document.getElementById('imgResultFooter').style.display = 'none';
-    imgResultBase64 = null; imgResultFilename = null;
+      setResultState('empty');
+      document.getElementById('imgResultEmpty').textContent = 'Cliquez sur "Traiter l\'image"';
+      document.getElementById('imgResultFooter').style.display = 'none';
+      imgResultBase64 = null; imgResultFilename = null;
 
-    // Montrer le panneau de traitement
-    document.getElementById('imgUploadZone').style.display   = 'none';
-    document.getElementById('imgProcessPanel').style.display = 'block';
+      document.getElementById('imgUploadZone').style.display   = 'none';
+      document.getElementById('imgProcessPanel').style.display = 'block';
 
-    // Auto-remplir l'EAN depuis le formulaire principal si disponible
-    const eanFld = document.getElementById('imgEan');
-    if (!eanFld.value) {
-      const mainEan = document.getElementById('ean');
-      if (mainEan && mainEan.value) eanFld.value = mainEan.value;
-    }
+      const eanFld = document.getElementById('imgEan');
+      if (!eanFld.value) {
+        const mainEan = document.getElementById('ean');
+        if (mainEan && mainEan.value) eanFld.value = mainEan.value;
+      }
+    };
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
 }
@@ -1093,7 +1098,7 @@ async function processBatch() {
 
   const removeBg    = document.getElementById('batchRemoveBg').checked;
   const sensitivity = parseInt(document.getElementById('batchSensitivity').value, 10);
-  const CONCURRENCY = 4; // 4 images en parallèle
+  const CONCURRENCY = 2; // 2 images en parallèle (optimal sur 1 CPU)
 
   // Réinitialiser les statuts
   batchFiles.forEach(e => { e.status = 'pending'; e.resultBase64 = null; setBatchStatus(e.id, 'pending'); });
@@ -1150,11 +1155,24 @@ async function processBatch() {
   toast(`${ok} image(s) traitée(s) sur ${total}`, ok === total ? 'success' : '');
 }
 
-async function readFileAsBase64(file) {
+async function readFileAsBase64(file, maxPx = 1500) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
-    r.onload  = e => resolve(e.target.result.split(',')[1]);
     r.onerror = reject;
+    r.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.round(img.width  * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
+      };
+      img.src = e.target.result;
+    };
     r.readAsDataURL(file);
   });
 }

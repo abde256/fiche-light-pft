@@ -22,7 +22,18 @@ let aiError    = null;
     const mod  = await import('@imgly/background-removal-node');
     aiRemoveBg = mod.removeBackground;
     aiReady    = true;
-    console.log('\n🤖  Moteur IA background-removal chargé (premier traitement télécharge le modèle)\n');
+    console.log('\n🤖  Moteur IA background-removal chargé — préchauffage en cours...\n');
+    // Préchauffage : initialise l'ONNX session au démarrage pour que la 1ère vraie requête soit rapide
+    try {
+      const warmPng = await sharp({
+        create: { width: 64, height: 64, channels: 4, background: { r:200, g:200, b:200, alpha:1 } }
+      }).png().toBuffer();
+      const warmBlob = new Blob([warmPng], { type: 'image/png' });
+      await aiRemoveBg(warmBlob, { output: { format: 'image/png', quality: 0.5, type: 'foreground' } });
+      console.log('🤖  Préchauffage IA terminé — prêt\n');
+    } catch (warmErr) {
+      console.log('🤖  Préchauffage ignoré (' + warmErr.message + ')\n');
+    }
   } catch (e) {
     aiError = e.message;
     console.warn('\n⚠️  Moteur IA non disponible — mode algo classique actif.\n   (' + e.message + ')\n');
@@ -523,8 +534,8 @@ app.post('/api/process-image', async (req, res) => {
       // ── VOIE IA (prioritaire) ─────────────────────────────────────────
       if (aiRemoveBg) {
         try {
-          // Réduire à 1024px max pour l'IA (3-4x plus rapide), la qualité de détection reste identique
-          const AI_MAX = 1024;
+          // Réduire à 800px max pour l'IA (4-5x plus rapide), la qualité de détection reste identique
+          const AI_MAX = 800;
           const meta = await sharp(inputBuffer).metadata();
           const needsResize = (meta.width > AI_MAX || meta.height > AI_MAX);
           const aiInput = needsResize
