@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: fiche-light-pft
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: templates-storage
+      mountPath: /opt/render/project/src/templates
+      sizeGB: 1

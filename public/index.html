@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiche Light PFT</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- ═══ SIDEBAR GAUCHE ═══════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+
+    <div class="sidebar-brand">
+      <div class="brand-icon">📋</div>
+      <div>
+        <div class="brand-title">Fiche Light PFT</div>
+        <div class="brand-sub">Carrefour e-commerce</div>
+      </div>
+    </div>
+
+    <!-- Sélection rayon -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Rayon</div>
+      <div class="rayon-list" id="rayonList">
+        <button class="rayon-btn" data-rayon="R20"><span class="rc">R20</span><span class="rn">Charcuterie · Traiteur · Fromage</span></button>
+        <button class="rayon-btn" data-rayon="R21"><span class="rc">R21</span><span class="rn">Poissonnerie</span></button>
+        <button class="rayon-btn" data-rayon="R22"><span class="rc">R22</span><span class="rn">Fruits et Légumes</span></button>
+        <button class="rayon-btn" data-rayon="R23"><span class="rc">R23</span><span class="rn">BVP — Boulangerie · Pâtisserie · Viennoiserie</span></button>
+        <button class="rayon-btn" data-rayon="R24"><span class="rc">R24</span><span class="rn">Boucherie</span></button>
+      </div>
+    </div>
+
+    <!-- Décodeur BCP -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Décodeur BCP</div>
+      <textarea id="bcpInput" class="bcp-textarea" rows="3" placeholder="Collez le libellé BCP…&#10;Ex: BF BQ 200G TR FQC FR"></textarea>
+      <button class="btn btn-sm btn-outline" id="decodeBcpBtn">Décoder ↓</button>
+      <div id="bcpResult" class="bcp-result" style="display:none"></div>
+      <div class="abbr-grid">
+        <span class="abbr-item" title="Barquette">BQ</span>
+        <span class="abbr-item" title="Sachet">ST</span>
+        <span class="abbr-item" title="Filet">FL</span>
+        <span class="abbr-item" title="Tranchés">TR</span>
+        <span class="abbr-item" title="Barquette">CAISS</span>
+        <span class="abbr-item" title="Kilo">KG</span>
+        <span class="abbr-item" title="Pièce">PCE</span>
+        <span class="abbr-item" title="Porc">PC</span>
+        <span class="abbr-item" title="Agneau">AG</span>
+        <span class="abbr-item" title="Boeuf">BF</span>
+        <span class="abbr-item" title="Français">FR</span>
+        <span class="abbr-item" title="Import">IMP</span>
+        <span class="abbr-item" title="Europe">CEE</span>
+        <span class="abbr-item" title="CARREFOUR">CRF</span>
+        <span class="abbr-item" title="Filière Qualité Carrefour">FQC</span>
+        <span class="abbr-item" title="Label Rouge">LR</span>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ═══ ZONE CENTRALE ════════════════════════════════════════════════════ -->
+  <main class="main-area">
+
+    <div class="main-topbar">
+      <div>
+        <div class="main-title" id="mainTitle">Sélectionnez un rayon pour commencer</div>
+        <div class="main-sub"  id="mainSub">Choisissez un rayon dans la barre de gauche</div>
+      </div>
+      <div class="topbar-counter"><span id="topCount">0</span> produit(s) dans le lot</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="main-tabs">
+      <button class="tab-btn active" data-tab="manual">✏️ Saisie manuelle</button>
+      <button class="tab-btn"        data-tab="import">📂 Importer un fichier</button>
+      <button class="tab-btn"        data-tab="images">🖼️ Visuels produit</button>
+    </div>
+
+    <!-- ── TAB : Saisie manuelle ─────────────────────────────────────────── -->
+    <div class="tab-panel active" id="tabManual">
+      <div class="form-wrap" id="formWrap">
+
+        <div class="placeholder" id="placeholder">
+          <div class="placeholder-emoji">👈</div>
+          <p>Sélectionnez un rayon pour afficher le formulaire</p>
+        </div>
+
+        <form id="ficheForm" style="display:none" novalidate>
+
+          <!-- Identification -->
+          <div class="card">
+            <div class="card-header"><h3>Identification</h3></div>
+            <div class="card-body">
+              <div class="row2">
+                <div class="field">
+                  <label for="ean">EAN <span class="req">*</span></label>
+                  <input type="text" id="ean" placeholder="1234567890123" maxlength="13" autocomplete="off">
+                  <div class="hint">Aucun espace avant/après</div>
+                  <div class="err" id="eanErr"></div>
+                </div>
+                <div class="field">
+                  <label class="checkbox-label"><input type="checkbox" id="poidsVariable"><span>Produit à poids variable</span></label>
+                  <div class="hint">Active le champ « Palier de commande »</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Libellé -->
+          <div class="card">
+            <div class="card-header">
+              <h3>Libellé client</h3>
+              <span class="card-hint">Généré automatiquement depuis les 3 champs</span>
+            </div>
+            <div class="card-body">
+              <div class="libelle-preview" id="libellePreview">
+                <span class="lp-placeholder">Le libellé apparaîtra ici en temps réel…</span>
+              </div>
+              <div class="row3">
+                <div class="field">
+                  <label for="natureBrute">Nature brute <span class="req">*</span></label>
+                  <input type="text" id="natureBrute" placeholder="Ex : Foie Gras" autocomplete="off">
+                  <div class="hint">Nom principal</div>
+                </div>
+                <div class="field">
+                  <label for="attribut">Attribut</label>
+                  <input type="text" id="attribut" placeholder="Ex : Entier de Canard du Sud Ouest" autocomplete="off">
+                  <div class="hint">Spécificité</div>
+                </div>
+                <div class="field">
+                  <label for="marque">Marque produit</label>
+                  <input type="text" id="marque" placeholder="Ex : MAISON MONTFORT" autocomplete="off">
+                  <div class="hint">MAJUSCULES, sans accent</div>
+                </div>
+              </div>
+              <div class="marques-row">
+                <span class="mc-label">Marques Carrefour :</span>
+                <button type="button" class="mc-chip" data-m="CARREFOUR">CRF</button>
+                <button type="button" class="mc-chip" data-m="FILIERE QUALITE CARREFOUR">FQC</button>
+                <button type="button" class="mc-chip" data-m="CARREFOUR LE MARCHE">Le Marché</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Données commerciales -->
+          <div class="card">
+            <div class="card-header"><h3>Données commerciales</h3></div>
+            <div class="card-body">
+              <div class="row2">
+                <div class="field">
+                  <label for="conditionnement">Conditionnement <span class="req">*</span></label>
+                  <input type="text" id="conditionnement" placeholder="Ex : la barquette de 200g" autocomplete="off">
+                  <div class="chips-row" id="condSugg"></div>
+                </div>
+                <div class="field">
+                  <label for="infoBandeau">Info bandeau</label>
+                  <input type="text" id="infoBandeau" placeholder="Ex : 200g" autocomplete="off">
+                  <div class="chips-row" id="bandSugg"></div>
+                </div>
+              </div>
+              <div class="row2" id="palierRow" style="display:none">
+                <div class="field">
+                  <label for="palierCommande">Palier de commande</label>
+                  <input type="text" id="palierCommande" placeholder="Ex : 0.080" autocomplete="off">
+                  <div class="hint">Toujours 3 chiffres après le point · Format texte</div>
+                  <div class="err" id="palierErr"></div>
+                </div>
+                <div class="field">
+                  <div class="palier-examples">
+                    <div class="pe-title">Exemples :</div>
+                    <div class="pe-item"><code>la tranche de 80g</code> → <strong>0.080</strong></div>
+                    <div class="pe-item"><code>3 tranches de 80g</code> → <strong>0.240</strong></div>
+                    <div class="pe-item"><code>le kilo</code> → <strong>1.000</strong></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Certifications -->
+          <div class="card">
+            <div class="card-header"><h3>Certifications</h3></div>
+            <div class="card-body flags-body">
+              <label class="flag-toggle">
+                <input type="checkbox" id="flagBio">
+                <div class="ft-box"><span class="ft-badge bio">BIO</span>
+                  <div><div class="ft-label">Flag Bio</div><div class="ft-hint">TRUE si « Bio » dans le libellé</div></div>
+                </div>
+              </label>
+              <label class="flag-toggle">
+                <input type="checkbox" id="flagFQC">
+                <div class="ft-box"><span class="ft-badge fqc">FQC</span>
+                  <div><div class="ft-label">Flag FQC</div><div class="ft-hint">TRUE si « FQC » ou « Filière Qualité » dans le libellé</div></div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Allergènes -->
+          <div class="card">
+            <div class="card-header card-header-toggle" id="allergenToggle">
+              <h3>Allergènes <span class="auto-count">(14 réglementaires)</span></h3>
+              <span class="toggle-arrow" id="allergenArrow">▾</span>
+            </div>
+            <div id="allergenContent">
+              <div class="allergen-grid">
+                <label class="al-item"><input type="checkbox" data-al="gluten"><span>🌾 Gluten</span></label>
+                <label class="al-item"><input type="checkbox" data-al="lait"><span>🥛 Lactose</span></label>
+                <label class="al-item"><input type="checkbox" data-al="soja"><span>🫘 Soja</span></label>
+                <label class="al-item"><input type="checkbox" data-al="arachides"><span>🥜 Arachides</span></label>
+                <label class="al-item"><input type="checkbox" data-al="celeri"><span>🌿 Céleri</span></label>
+                <label class="al-item"><input type="checkbox" data-al="oeufs"><span>🥚 Oeufs</span></label>
+                <label class="al-item"><input type="checkbox" data-al="crustaces"><span>🦐 Crustacés</span></label>
+                <label class="al-item"><input type="checkbox" data-al="poisson"><span>🐟 Poisson</span></label>
+                <label class="al-item"><input type="checkbox" data-al="fruitsACoque"><span>🌰 Fruits à coque</span></label>
+                <label class="al-item"><input type="checkbox" data-al="moutarde"><span>🌼 Moutarde</span></label>
+                <label class="al-item"><input type="checkbox" data-al="sesame"><span>🫙 Sésame</span></label>
+                <label class="al-item"><input type="checkbox" data-al="sulfites"><span>🍷 Sulfites</span></label>
+                <label class="al-item"><input type="checkbox" data-al="lupin"><span>🌱 Lupin</span></label>
+                <label class="al-item"><input type="checkbox" data-al="mollusques"><span>🐚 Mollusques</span></label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Valeurs nutritionnelles (optionnel) -->
+          <div class="card">
+            <div class="card-header card-header-toggle" id="nutriToggle">
+              <h3>Valeurs nutritionnelles <span class="auto-count">(optionnel)</span></h3>
+              <span class="toggle-arrow collapsed" id="nutriArrow">▾</span>
+            </div>
+            <div id="nutriContent" style="display:none">
+              <div class="card-body">
+                <div class="nutri-grid">
+                  <div class="field">
+                    <label for="valeursEnergetiques">Valeur énergétique (fr_FR)</label>
+                    <input type="text" id="valeursEnergetiques" placeholder="Ex : 250 kcal / 1045 kJ" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="graisses">Matières grasses (fr_FR)</label>
+                    <input type="text" id="graisses" placeholder="Ex : 12g" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="grasSatures">dont acides gras saturés (fr_FR)</label>
+                    <input type="text" id="grasSatures" placeholder="Ex : 4g" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="glucides">Glucides (fr_FR)</label>
+                    <input type="text" id="glucides" placeholder="Ex : 30g" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="sucres">dont sucres (fr_FR)</label>
+                    <input type="text" id="sucres" placeholder="Ex : 5g" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="proteines">Protéines (fr_FR)</label>
+                    <input type="text" id="proteines" placeholder="Ex : 8g" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="sel">Sel</label>
+                    <input type="text" id="sel" placeholder="Ex : 1.2g" autocomplete="off">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Champs spécifiques rayon -->
+          <div id="rayonCard" style="display:none">
+            <div class="card card-rayon">
+              <div class="card-header rayon-header">
+                <h3 id="rayonCardTitle">Champs spécifiques</h3>
+                <span class="rayon-badge" id="rayonCardBadge">R20</span>
+              </div>
+              <div class="card-body" id="rayonFields"></div>
+            </div>
+          </div>
+
+          <!-- Auto-remplis -->
+          <div class="card card-auto">
+            <div class="card-header card-header-toggle" id="autoToggle">
+              <h3>Champs auto-remplis <span class="auto-count">(4)</span></h3>
+              <span class="toggle-arrow" id="autoArrow">▾</span>
+            </div>
+            <div id="autoContent">
+              <div class="auto-grid">
+                <div class="auto-item wide">
+                  <div class="auto-label">Service consommateur</div>
+                  <div class="auto-val">Service Consommateurs Carrefour<br>TSA 91431 - 91343 MASSY Cedex<br>N° CRISTAL : 09 69 7000 - Appel non surtaxé</div>
+                </div>
+                <div class="auto-item">
+                  <div class="auto-label">Flag INCO</div>
+                  <div class="auto-val"><span class="auto-badge-green">TRUE</span></div>
+                </div>
+                <div class="auto-item">
+                  <div class="auto-label">Exposant</div>
+                  <div class="auto-val"><span class="auto-badge-blue">pour 100g</span></div>
+                </div>
+                <div class="auto-item">
+                  <div class="auto-label">Fourchette prép</div>
+                  <div class="auto-val"><span class="auto-badge-blue">0</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost" id="resetBtn">Réinitialiser</button>
+            <button type="submit" class="btn btn-primary">+ Ajouter au lot</button>
+          </div>
+
+        </form>
+      </div><!-- /form-wrap -->
+    </div><!-- /tabManual -->
+
+    <!-- ── TAB : Import fichier ──────────────────────────────────────────── -->
+    <div class="tab-panel" id="tabImport" style="display:none">
+      <div class="import-wrap">
+
+        <!-- Zone de dépôt -->
+        <div class="upload-zone" id="uploadZone">
+          <div class="upload-icon">📂</div>
+          <div class="upload-title">Glissez votre fichier Excel ou CSV ici</div>
+          <div class="upload-sub">Formats acceptés : .xlsx · .xls · .csv</div>
+          <button type="button" class="btn btn-outline btn-sm" id="uploadBrowseBtn">Parcourir…</button>
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden>
+        </div>
+
+        <!-- Mapping colonnes (affiché après chargement du fichier) -->
+        <div id="mappingSection" style="display:none">
+
+          <div class="import-info-bar">
+            <span id="importFileName" class="import-filename"></span>
+            <span id="importRowCount" class="import-rowcount"></span>
+            <button class="btn btn-ghost btn-sm" id="changeFileBtn">Changer de fichier</button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>Correspondance des colonnes</h3>
+              <span class="card-hint">Vérifiez et ajustez le mapping auto-détecté</span>
+            </div>
+            <div class="card-body" style="padding:0">
+              <div class="mapping-scroll">
+                <table class="mapping-table" id="mappingTable">
+                  <thead>
+                    <tr>
+                      <th>Colonne du fichier</th>
+                      <th>→ Champ cible</th>
+                      <th>Exemple de valeur</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mappingTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>Aperçu des données</h3>
+              <span class="card-hint" id="previewCaption">3 premières lignes</span>
+            </div>
+            <div class="card-body" style="padding:0; overflow-x:auto">
+              <table class="preview-table" id="previewTable"></table>
+            </div>
+          </div>
+
+          <div class="import-actions-bar">
+            <span id="importActionInfo" class="import-action-info"></span>
+            <button class="btn btn-primary" id="doImportBtn">Importer les produits</button>
+          </div>
+
+        </div><!-- /mappingSection -->
+      </div><!-- /import-wrap -->
+    </div><!-- /tabImport -->
+
+    <!-- ── TAB : Visuels produit ───────────────────────────────────────────── -->
+    <div class="tab-panel" id="tabImages" style="display:none">
+      <div class="images-wrap">
+
+        <!-- Sous-onglets -->
+        <div class="img-subtabs-wrap">
+          <div class="img-subtabs">
+            <button class="img-subtab-btn active" data-stab="single">🖼️ Image unique</button>
+            <button class="img-subtab-btn"        data-stab="batch">📦 Traitement en masse <span class="img-stab-hint">(500 max)</span></button>
+            <button class="img-subtab-btn"        data-stab="templates">🎨 Fonds de scène</button>
+          </div>
+          <span class="ai-badge ai-badge-loading" id="aiStatusBadge">⏳ Vérification IA…</span>
+        </div>
+
+        <!-- ── SOUS-ONGLET : Image unique ─────────────────────────────── -->
+        <div id="stab-single">
+
+          <div class="img-upload-zone" id="imgUploadZone">
+            <div class="upload-icon">🖼️</div>
+            <div class="upload-title">Glissez une image produit ici</div>
+            <div class="upload-sub">Formats : .jpg · .jpeg · .png · .webp — Max 15 MB</div>
+            <button type="button" class="btn btn-outline btn-sm" id="imgBrowseBtn">Parcourir…</button>
+            <input type="file" id="imgFileInput" accept="image/*" hidden>
+          </div>
+
+          <div id="imgProcessPanel" style="display:none">
+            <div class="img-opts-bar">
+              <div class="img-opts-group">
+                <span class="sidebar-label">EAN du produit</span>
+                <input type="text" id="imgEan" class="img-ean-input" placeholder="1234567890123" maxlength="13">
+              </div>
+              <div class="img-opts-group">
+                <span class="sidebar-label">Catégorie produit</span>
+                <select id="imgRayon" class="img-ean-input" style="width:auto;min-width:200px">
+                  <option value="">— Standard (fond blanc) —</option>
+                  <option value="R20">R20 — Charcuterie · Traiteur · Fromage</option>
+                  <option value="R21">R21 — Poissonnerie</option>
+                  <option value="R22">R22 — Fruits et Légumes</option>
+                  <option value="R23">R23 — BVP</option>
+                  <option value="R24">R24 — Boucherie</option>
+                </select>
+              </div>
+              <div class="img-opts-group">
+                <label class="flag-toggle">
+                  <input type="checkbox" id="imgRemoveBg" checked>
+                  <div class="ft-box"><div>
+                    <div class="ft-label">Supprimer le fond</div>
+                    <div class="ft-hint">Remplace le fond par blanc pur (#FFFFFF)</div>
+                  </div></div>
+                </label>
+              </div>
+              <div class="img-opts-group" id="imgSensGroup">
+                <span class="sidebar-label">Tolérance fond</span>
+                <div class="img-sens-row">
+                  <input type="range" id="imgSensitivity" min="5" max="80" value="30">
+                  <span class="img-sens-val" id="imgSensVal">30</span>
+                </div>
+                <div class="hint">Augmenter si des zones de fond subsistent</div>
+              </div>
+              <div class="img-opts-group">
+                <span class="sidebar-label">Taille sur le décor</span>
+                <div class="img-sens-row">
+                  <input type="range" id="imgSceneScale" min="40" max="95" value="68">
+                  <span class="img-sens-val" id="imgSceneScaleVal">68%</span>
+                </div>
+              </div>
+              <div class="img-opts-group">
+                <span class="sidebar-label">Position verticale</span>
+                <div class="img-sens-row">
+                  <input type="range" id="imgVertOffset" min="-100" max="100" value="0">
+                  <span class="img-sens-val" id="imgVertOffsetVal">Centre</span>
+                </div>
+                <div class="hint">— = monter · + = descendre</div>
+              </div>
+              <div class="img-opts-actions">
+                <button class="btn btn-primary" id="imgProcessBtn">⚡ Traiter l'image</button>
+                <button class="btn btn-ghost btn-sm" id="imgChangeBtn">← Nouvelle image</button>
+              </div>
+            </div>
+
+            <div class="img-preview-grid">
+              <div class="img-preview-pane">
+                <div class="img-pane-header">
+                  <span class="img-pane-title">Original</span>
+                  <span class="img-pane-meta" id="imgOrigMeta"></span>
+                </div>
+                <div class="img-pane-box"><img id="imgOriginal" alt="Image originale"></div>
+              </div>
+              <div class="img-preview-pane">
+                <div class="img-pane-header">
+                  <span class="img-pane-title">Résultat</span>
+                  <span class="img-std-badge">1500×1500 px · JPG · ≤ 2 MB · EAN_0.jpg</span>
+                </div>
+                <div class="img-pane-box img-pane-result">
+                  <div class="img-pane-empty" id="imgResultEmpty">Cliquez sur "Traiter l'image"</div>
+                  <div class="img-pane-spin" id="imgResultSpin" style="display:none">
+                    <div class="spin-anim"></div><div>Traitement en cours…</div>
+                  </div>
+                  <img id="imgResult" alt="Image traitée" style="display:none">
+                </div>
+                <div class="img-pane-footer" id="imgResultFooter" style="display:none">
+                  <span class="img-result-meta" id="imgResultMeta"></span>
+                  <button class="btn btn-export img-dl-btn" id="imgDownloadBtn">📥 Télécharger</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /stab-single -->
+
+        <!-- ── SOUS-ONGLET : Traitement en masse ──────────────────────── -->
+        <div id="stab-batch" style="display:none">
+
+          <div class="img-upload-zone" id="batchUploadZone">
+            <div class="upload-icon">📦</div>
+            <div class="upload-title">Glissez jusqu'à 500 images ici</div>
+            <div class="upload-sub">Formats : .jpg · .jpeg · .png · .webp — Chaque image max 15 MB</div>
+            <button type="button" class="btn btn-outline btn-sm" id="batchBrowseBtn">Parcourir…</button>
+            <input type="file" id="batchFileInput" accept="image/*" multiple hidden>
+          </div>
+
+          <div id="batchPanel" style="display:none">
+
+            <div class="img-opts-bar">
+              <div class="img-opts-group">
+                <label class="flag-toggle">
+                  <input type="checkbox" id="batchRemoveBg" checked>
+                  <div class="ft-box"><div>
+                    <div class="ft-label">Supprimer le fond</div>
+                    <div class="ft-hint">Remplace par blanc pur (#FFFFFF)</div>
+                  </div></div>
+                </label>
+              </div>
+              <div class="img-opts-group" id="batchSensGroup">
+                <span class="sidebar-label">Tolérance fond</span>
+                <div class="img-sens-row">
+                  <input type="range" id="batchSensitivity" min="5" max="80" value="30">
+                  <span class="img-sens-val" id="batchSensVal">30</span>
+                </div>
+              </div>
+              <div class="img-opts-group">
+                <span class="sidebar-label">Catégorie produit</span>
+                <select id="batchRayon" class="img-ean-input" style="width:auto;min-width:190px">
+                  <option value="">— Standard (fond blanc) —</option>
+                  <option value="R20">R20 — Charcuterie · Fromage</option>
+                  <option value="R21">R21 — Poissonnerie</option>
+                  <option value="R22">R22 — Fruits et Légumes</option>
+                  <option value="R23">R23 — BVP</option>
+                  <option value="R24">R24 — Boucherie</option>
+                </select>
+              </div>
+              <div class="img-opts-group">
+                <span class="sidebar-label">Taille sur le décor</span>
+                <div class="img-sens-row">
+                  <input type="range" id="batchSceneScale" min="40" max="95" value="68">
+                  <span class="img-sens-val" id="batchSceneScaleVal">68%</span>
+                </div>
+              </div>
+              <div class="img-opts-group">
+                <span class="sidebar-label">Position verticale</span>
+                <div class="img-sens-row">
+                  <input type="range" id="batchVertOffset" min="-100" max="100" value="0">
+                  <span class="img-sens-val" id="batchVertOffsetVal">Centre</span>
+                </div>
+              </div>
+              <div class="img-opts-actions">
+                <button class="btn btn-primary" id="batchProcessBtn">⚡ Traiter toutes les images</button>
+                <button class="btn btn-ghost btn-sm" id="batchClearBtn">← Vider la liste</button>
+              </div>
+            </div>
+
+            <!-- Barre de progression -->
+            <div class="batch-progress-wrap" id="batchProgressWrap" style="display:none">
+              <div class="batch-progress-bar">
+                <div class="batch-progress-fill" id="batchProgressFill" style="width:0%"></div>
+              </div>
+              <span class="batch-progress-text" id="batchProgressText">0 / 0</span>
+            </div>
+
+            <!-- En-tête + bouton ZIP -->
+            <div class="batch-list-head">
+              <span id="batchCountLabel">0 image(s)</span>
+              <button class="btn btn-export btn-sm" id="batchDownloadBtn" style="display:none">📥 Télécharger tout (ZIP)</button>
+            </div>
+
+            <!-- Tableau des fichiers -->
+            <div class="batch-table-wrap">
+              <table class="batch-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Fichier source</th>
+                    <th>EAN (nom fichier de sortie)</th>
+                    <th>Statut</th>
+                  </tr>
+                </thead>
+                <tbody id="batchTableBody"></tbody>
+              </table>
+            </div>
+
+          </div><!-- /batchPanel -->
+
+        </div><!-- /stab-batch -->
+
+        <!-- ── SOUS-ONGLET : Fonds de scène ──────────────────────── -->
+        <div id="stab-templates" style="display:none">
+
+          <div class="tpl-intro">
+            <div class="tpl-intro-icon">🎨</div>
+            <div>
+              <div class="tpl-intro-title">Fonds de scène par catégorie</div>
+              <div class="tpl-intro-sub">Importez un fond stylisé pour chaque rayon. Votre produit sera automatiquement composité dessus lors du traitement. Utilisez une image générée par ChatGPT ou toute photo de mise en scène.</div>
+            </div>
+          </div>
+
+          <div class="tpl-grid" id="tplGrid">
+
+            <div class="tpl-card" id="tpl-card-R20">
+              <div class="tpl-card-header">
+                <span class="tpl-rayon-badge">R20</span>
+                <div class="tpl-rayon-info">
+                  <div class="tpl-rayon-name">Charcuterie · Traiteur · Fromage</div>
+                  <div class="tpl-rayon-hint">Ex : planche en bois, marbre, ardoise avec accessoires</div>
+                </div>
+              </div>
+              <div class="tpl-preview-box" id="tpl-preview-R20">
+                <div class="tpl-preview-empty" id="tpl-empty-R20">Aucun fond — fond blanc utilisé</div>
+                <img class="tpl-preview-img" id="tpl-img-R20" style="display:none" alt="Fond R20">
+              </div>
+              <div class="tpl-card-footer">
+                <span class="tpl-status" id="tpl-status-R20">⬜ Fond blanc</span>
+                <div class="tpl-btns">
+                  <button class="btn btn-sm btn-outline" onclick="triggerTplUpload('R20')">📂 Importer</button>
+                  <button class="btn btn-sm btn-danger-outline" id="tpl-del-R20" onclick="deleteTpl('R20')" style="display:none">🗑️</button>
+                </div>
+              </div>
+              <input type="file" id="tpl-file-R20" accept="image/*" hidden>
+            </div>
+
+            <div class="tpl-card" id="tpl-card-R21">
+              <div class="tpl-card-header">
+                <span class="tpl-rayon-badge">R21</span>
+                <div class="tpl-rayon-info">
+                  <div class="tpl-rayon-name">Poissonnerie</div>
+                  <div class="tpl-rayon-hint">Ex : ardoise avec glace pilée, citron, aneth</div>
+                </div>
+              </div>
+              <div class="tpl-preview-box" id="tpl-preview-R21">
+                <div class="tpl-preview-empty" id="tpl-empty-R21">Aucun fond — fond blanc utilisé</div>
+                <img class="tpl-preview-img" id="tpl-img-R21" style="display:none" alt="Fond R21">
+              </div>
+              <div class="tpl-card-footer">
+                <span class="tpl-status" id="tpl-status-R21">⬜ Fond blanc</span>
+                <div class="tpl-btns">
+                  <button class="btn btn-sm btn-outline" onclick="triggerTplUpload('R21')">📂 Importer</button>
+                  <button class="btn btn-sm btn-danger-outline" id="tpl-del-R21" onclick="deleteTpl('R21')" style="display:none">🗑️</button>
+                </div>
+              </div>
+              <input type="file" id="tpl-file-R21" accept="image/*" hidden>
+            </div>
+
+            <div class="tpl-card" id="tpl-card-R22">
+              <div class="tpl-card-header">
+                <span class="tpl-rayon-badge">R22</span>
+                <div class="tpl-rayon-info">
+                  <div class="tpl-rayon-name">Fruits et Légumes</div>
+                  <div class="tpl-rayon-hint">Ex : caisse en bois, fond naturel, feuilles</div>
+                </div>
+              </div>
+              <div class="tpl-preview-box" id="tpl-preview-R22">
+                <div class="tpl-preview-empty" id="tpl-empty-R22">Aucun fond — fond blanc utilisé</div>
+                <img class="tpl-preview-img" id="tpl-img-R22" style="display:none" alt="Fond R22">
+              </div>
+              <div class="tpl-card-footer">
+                <span class="tpl-status" id="tpl-status-R22">⬜ Fond blanc</span>
+                <div class="tpl-btns">
+                  <button class="btn btn-sm btn-outline" onclick="triggerTplUpload('R22')">📂 Importer</button>
+                  <button class="btn btn-sm btn-danger-outline" id="tpl-del-R22" onclick="deleteTpl('R22')" style="display:none">🗑️</button>
+                </div>
+              </div>
+              <input type="file" id="tpl-file-R22" accept="image/*" hidden>
+            </div>
+
+            <div class="tpl-card" id="tpl-card-R23">
+              <div class="tpl-card-header">
+                <span class="tpl-rayon-badge">R23</span>
+                <div class="tpl-rayon-info">
+                  <div class="tpl-rayon-name">BVP · Boulangerie · Pâtisserie</div>
+                  <div class="tpl-rayon-hint">Ex : torchon, planche à pain, fond chaud</div>
+                </div>
+              </div>
+              <div class="tpl-preview-box" id="tpl-preview-R23">
+                <div class="tpl-preview-empty" id="tpl-empty-R23">Aucun fond — fond blanc utilisé</div>
+                <img class="tpl-preview-img" id="tpl-img-R23" style="display:none" alt="Fond R23">
+              </div>
+              <div class="tpl-card-footer">
+                <span class="tpl-status" id="tpl-status-R23">⬜ Fond blanc</span>
+                <div class="tpl-btns">
+                  <button class="btn btn-sm btn-outline" onclick="triggerTplUpload('R23')">📂 Importer</button>
+                  <button class="btn btn-sm btn-danger-outline" id="tpl-del-R23" onclick="deleteTpl('R23')" style="display:none">🗑️</button>
+                </div>
+              </div>
+              <input type="file" id="tpl-file-R23" accept="image/*" hidden>
+            </div>
+
+            <div class="tpl-card" id="tpl-card-R24">
+              <div class="tpl-card-header">
+                <span class="tpl-rayon-badge">R24</span>
+                <div class="tpl-rayon-info">
+                  <div class="tpl-rayon-name">Boucherie</div>
+                  <div class="tpl-rayon-hint">Ex : billot, ardoise sombre, herbes fraîches</div>
+                </div>
+              </div>
+              <div class="tpl-preview-box" id="tpl-preview-R24">
+                <div class="tpl-preview-empty" id="tpl-empty-R24">Aucun fond — fond blanc utilisé</div>
+                <img class="tpl-preview-img" id="tpl-img-R24" style="display:none" alt="Fond R24">
+              </div>
+              <div class="tpl-card-footer">
+                <span class="tpl-status" id="tpl-status-R24">⬜ Fond blanc</span>
+                <div class="tpl-btns">
+                  <button class="btn btn-sm btn-outline" onclick="triggerTplUpload('R24')">📂 Importer</button>
+                  <button class="btn btn-sm btn-danger-outline" id="tpl-del-R24" onclick="deleteTpl('R24')" style="display:none">🗑️</button>
+                </div>
+              </div>
+              <input type="file" id="tpl-file-R24" accept="image/*" hidden>
+            </div>
+
+          </div><!-- /tpl-grid -->
+        </div><!-- /stab-templates -->
+
+      </div><!-- /images-wrap -->
+    </div><!-- /tabImages -->
+
+  </main>
+
+  <!-- ═══ PANNEAU DROIT ════════════════════════════════════════════════════ -->
+  <aside class="right-panel">
+    <div class="rp-header">
+      <h3>Lot de fiches</h3>
+      <span class="rp-badge" id="rpBadge">0</span>
+    </div>
+    <div class="rp-list" id="rpList">
+      <div class="rp-empty">Aucun produit ajouté</div>
+    </div>
+    <div class="rp-footer">
+      <button class="btn btn-export" id="exportBtn" disabled>📥 Exporter en Excel</button>
+      <button class="btn btn-danger-outline" id="clearBtn" disabled>Vider le lot</button>
+    </div>
+  </aside>
+
+</div><!-- /app-layout -->
+
+<div class="toast" id="toast"></div>
+<script src="/jszip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
