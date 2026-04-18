@@ -37,6 +37,53 @@ const app  = express();
 const PORT = process.env.PORT || 3003;
 
 app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: false }));
+
+// ─── Protection par mot de passe ─────────────────────────────────────────────
+const APP_PASSWORD = process.env.APP_PASSWORD || 'carrefour2024';
+
+app.get('/login', (req, res) => {
+  const error = req.query.error ? '<p style="color:red;margin:0 0 12px">Mot de passe incorrect</p>' : '';
+  res.send(`<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+  <title>Connexion — Fiche Light PFT</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:sans-serif;background:#f4f4f4;display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .box{background:#fff;padding:40px;border-radius:10px;box-shadow:0 2px 16px rgba(0,0,0,.1);width:340px;text-align:center}
+    h2{margin-bottom:24px;color:#1a1a2e;font-size:1.3rem}
+    input{width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:6px;font-size:1rem;margin-bottom:16px}
+    button{width:100%;padding:11px;background:#0066cc;color:#fff;border:none;border-radius:6px;font-size:1rem;cursor:pointer}
+    button:hover{background:#0052a3}
+  </style></head><body>
+  <div class="box">
+    <h2>🔒 Fiche Light PFT</h2>
+    ${error}
+    <form method="POST" action="/login">
+      <input type="password" name="password" placeholder="Mot de passe" autofocus>
+      <button type="submit">Accéder</button>
+    </form>
+  </div></body></html>`);
+});
+
+app.post('/login', (req, res) => {
+  if (req.body.password === APP_PASSWORD) {
+    res.setHeader('Set-Cookie', `pft_auth=${APP_PASSWORD}; Path=/; HttpOnly; Max-Age=86400`);
+    res.redirect('/');
+  } else {
+    res.redirect('/login?error=1');
+  }
+});
+
+function authMiddleware(req, res, next) {
+  if (req.path === '/login') return next();
+  const cookies = Object.fromEntries(
+    (req.headers.cookie || '').split(';').map(c => c.trim().split('=').map(decodeURIComponent))
+  );
+  if (cookies.pft_auth === APP_PASSWORD) return next();
+  res.redirect('/login');
+}
+
+app.use(authMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
