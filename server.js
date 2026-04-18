@@ -523,8 +523,14 @@ app.post('/api/process-image', async (req, res) => {
       // ── VOIE IA (prioritaire) ─────────────────────────────────────────
       if (aiRemoveBg) {
         try {
-          const pngInput   = await sharp(inputBuffer).png().toBuffer();
-          const inputBlob  = new Blob([pngInput], { type: 'image/png' });
+          // Réduire à 1024px max pour l'IA (3-4x plus rapide), la qualité de détection reste identique
+          const AI_MAX = 1024;
+          const meta = await sharp(inputBuffer).metadata();
+          const needsResize = (meta.width > AI_MAX || meta.height > AI_MAX);
+          const aiInput = needsResize
+            ? await sharp(inputBuffer).resize(AI_MAX, AI_MAX, { fit:'inside', withoutEnlargement:true, kernel:sharp.kernel.lanczos3 }).png().toBuffer()
+            : await sharp(inputBuffer).png().toBuffer();
+          const inputBlob  = new Blob([aiInput], { type: 'image/png' });
           const resultBlob = await aiRemoveBg(inputBlob, {
             output: { format: 'image/png', quality: 1.0, type: 'foreground' },
           });
