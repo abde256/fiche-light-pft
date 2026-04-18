@@ -80,6 +80,7 @@ function authMiddleware(req, res, next) {
     (req.headers.cookie || '').split(';').map(c => c.trim().split('=').map(decodeURIComponent))
   );
   if (cookies.pft_auth === APP_PASSWORD) return next();
+  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Non autorisé' });
   res.redirect('/login');
 }
 
