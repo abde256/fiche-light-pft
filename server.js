@@ -611,48 +611,33 @@ app.post('/api/process-image', async (req, res) => {
         .toBuffer();
     }
 
-    // ── ÉTAPE 4 : Ombre portée ────────────────────────────────────────────
-    //   IMPORTANT : toujours blend "over" (jamais "multiply")
-    //   "multiply" sur fond sombre = artefacts noirs → interdit
-    const alphaRaw  = await sharp(scaledPng).extractChannel('alpha').raw().toBuffer();
-    const shadowRaw = Buffer.allocUnsafe(SZ * SZ * 4);
-
-    // Ombre portée subtile — blur faible pour éviter le débordement sur les côtés
-    const SR = 40, SG = 35, SB = 30;
-    const shadowOpacity = hasTemplate ? 0.18 : 0.22;
-    const shadowBlur    = hasTemplate ? 12   : 8;
-
-    for (let i = 0; i < SZ * SZ; i++) {
-      shadowRaw[i*4]   = SR;
-      shadowRaw[i*4+1] = SG;
-      shadowRaw[i*4+2] = SB;
-      shadowRaw[i*4+3] = Math.round(alphaRaw[i] * shadowOpacity);
-    }
-    const shadowPng = await sharp(shadowRaw, { raw: { width:SZ, height:SZ, channels:4 } })
-      .blur(shadowBlur)
-      .png()
-      .toBuffer();
-
-    // ── ÉTAPE 5 : Composition finale ──────────────────────────────────────
+    // ── ÉTAPE 4 : Composition finale ─────────────────────────────────────
     let composited;
 
     if (hasTemplate) {
-      // Offset shadow petit et doux — l'ombre se fond dans le décor
+      // Ombre ultra-subtile uniquement sur décor (pas sur fond blanc)
+      const alphaRaw  = await sharp(scaledPng).extractChannel('alpha').raw().toBuffer();
+      const shadowRaw = Buffer.allocUnsafe(SZ * SZ * 4);
+      for (let i = 0; i < SZ * SZ; i++) {
+        shadowRaw[i*4] = 30; shadowRaw[i*4+1] = 25; shadowRaw[i*4+2] = 20;
+        shadowRaw[i*4+3] = Math.round(alphaRaw[i] * 0.15);
+      }
+      const shadowPng = await sharp(shadowRaw, { raw: { width:SZ, height:SZ, channels:4 } })
+        .blur(8).png().toBuffer();
+
       composited = await sharp(fs.readFileSync(tplPath))
         .resize(SZ, SZ, { fit:'cover', position:'centre' })
         .composite([
-          { input: shadowPng, blend: 'over', left: 0, top: 18 },
+          { input: shadowPng, blend: 'over', left: 0, top: 20 },
           { input: scaledPng, blend: 'over', left: 0, top: 0  },
         ])
         .flatten({ background: WHITE })
         .png()
         .toBuffer();
     } else {
+      // Fond blanc pur — pas d'ombre (standard e-commerce Carrefour/Amazon)
       composited = await sharp({ create: { width:SZ, height:SZ, channels:3, background:WHITE } })
-        .composite([
-          { input: shadowPng, blend: 'over', left: 0,  top: 20 },
-          { input: scaledPng, blend: 'over', left: 0,  top: 0  },
-        ])
+        .composite([{ input: scaledPng, blend: 'over', left: 0, top: 0 }])
         .flatten({ background: WHITE })
         .png()
         .toBuffer();
