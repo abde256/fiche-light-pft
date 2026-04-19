@@ -523,7 +523,7 @@ app.post('/api/process-image', async (req, res) => {
       // ── VOIE IA (prioritaire) ─────────────────────────────────────────
       if (aiRemoveBg) {
         try {
-          const AI_MAX = 512;
+          const AI_MAX = 1024;
           const meta = await sharp(inputBuffer).metadata();
           const needsResize = (meta.width > AI_MAX || meta.height > AI_MAX);
           const aiInput = needsResize
@@ -532,9 +532,21 @@ app.post('/api/process-image', async (req, res) => {
           const inputBlob  = new Blob([aiInput], { type: 'image/png' });
           const resultBlob = await aiRemoveBg(inputBlob, {
             output: { format: 'image/png', quality: 1.0, type: 'foreground' },
-            model: 'small',
           });
           rgbaPng = Buffer.from(await resultBlob.arrayBuffer());
+
+          // Nettoyer les pixels résiduels du fond original (halo de couleur)
+          // Pré-composite les bords semi-transparents contre blanc → élimine toute couleur parasite
+          const { data: rd, info: ri } = await sharp(rgbaPng).raw().toBuffer({ resolveWithObject: true });
+          for (let i = 0; i < rd.length; i += 4) {
+            const a = rd[i + 3] / 255;
+            rd[i]     = Math.round(rd[i]     * a + 255 * (1 - a));
+            rd[i + 1] = Math.round(rd[i + 1] * a + 255 * (1 - a));
+            rd[i + 2] = Math.round(rd[i + 2] * a + 255 * (1 - a));
+            rd[i + 3] = rd[i + 3] < 10 ? 0 : rd[i + 3];
+          }
+          rgbaPng = await sharp(rd, { raw: { width: ri.width, height: ri.height, channels: 4 } }).png().toBuffer();
+
           bgDone  = true;
         } catch (aiErr) {
           console.error('IA fallback:', aiErr.message);
