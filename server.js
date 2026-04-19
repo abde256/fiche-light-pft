@@ -22,18 +22,7 @@ let aiError    = null;
     const mod  = await import('@imgly/background-removal-node');
     aiRemoveBg = mod.removeBackground;
     aiReady    = true;
-    console.log('\n🤖  Moteur IA background-removal chargé — préchauffage en cours...\n');
-    // Préchauffage : initialise l'ONNX session au démarrage pour que la 1ère vraie requête soit rapide
-    try {
-      const warmPng = await sharp({
-        create: { width: 64, height: 64, channels: 4, background: { r:200, g:200, b:200, alpha:1 } }
-      }).png().toBuffer();
-      const warmBlob = new Blob([warmPng], { type: 'image/png' });
-      await aiRemoveBg(warmBlob, { output: { format: 'image/png', quality: 0.5, type: 'foreground' } });
-      console.log('🤖  Préchauffage IA terminé — prêt\n');
-    } catch (warmErr) {
-      console.log('🤖  Préchauffage ignoré (' + warmErr.message + ')\n');
-    }
+    console.log('\n🤖  Moteur IA background-removal chargé\n');
   } catch (e) {
     aiError = e.message;
     console.warn('\n⚠️  Moteur IA non disponible — mode algo classique actif.\n   (' + e.message + ')\n');
@@ -534,8 +523,7 @@ app.post('/api/process-image', async (req, res) => {
       // ── VOIE IA (prioritaire) ─────────────────────────────────────────
       if (aiRemoveBg) {
         try {
-          // Réduire à 800px max pour l'IA (4-5x plus rapide), la qualité de détection reste identique
-          const AI_MAX = 800;
+          const AI_MAX = 512;
           const meta = await sharp(inputBuffer).metadata();
           const needsResize = (meta.width > AI_MAX || meta.height > AI_MAX);
           const aiInput = needsResize
@@ -544,6 +532,7 @@ app.post('/api/process-image', async (req, res) => {
           const inputBlob  = new Blob([aiInput], { type: 'image/png' });
           const resultBlob = await aiRemoveBg(inputBlob, {
             output: { format: 'image/png', quality: 1.0, type: 'foreground' },
+            model: 'small',
           });
           rgbaPng = Buffer.from(await resultBlob.arrayBuffer());
           bgDone  = true;
@@ -628,10 +617,10 @@ app.post('/api/process-image', async (req, res) => {
     const alphaRaw  = await sharp(scaledPng).extractChannel('alpha').raw().toBuffer();
     const shadowRaw = Buffer.allocUnsafe(SZ * SZ * 4);
 
-    // Gris chaud (pas noir pur) pour ombre naturelle
-    const SR = 45, SG = 38, SB = 32;
-    const shadowOpacity = hasTemplate ? 0.28 : 0.38;
-    const shadowBlur    = hasTemplate ? 30   : 22;
+    // Ombre portée subtile — blur faible pour éviter le débordement sur les côtés
+    const SR = 40, SG = 35, SB = 30;
+    const shadowOpacity = hasTemplate ? 0.18 : 0.22;
+    const shadowBlur    = hasTemplate ? 12   : 8;
 
     for (let i = 0; i < SZ * SZ; i++) {
       shadowRaw[i*4]   = SR;
@@ -652,7 +641,7 @@ app.post('/api/process-image', async (req, res) => {
       composited = await sharp(fs.readFileSync(tplPath))
         .resize(SZ, SZ, { fit:'cover', position:'centre' })
         .composite([
-          { input: shadowPng, blend: 'over', left: 6, top: 10 },
+          { input: shadowPng, blend: 'over', left: 0, top: 18 },
           { input: scaledPng, blend: 'over', left: 0, top: 0  },
         ])
         .flatten({ background: WHITE })
@@ -661,7 +650,7 @@ app.post('/api/process-image', async (req, res) => {
     } else {
       composited = await sharp({ create: { width:SZ, height:SZ, channels:3, background:WHITE } })
         .composite([
-          { input: shadowPng, blend: 'over', left: 8,  top: 14 },
+          { input: shadowPng, blend: 'over', left: 0,  top: 20 },
           { input: scaledPng, blend: 'over', left: 0,  top: 0  },
         ])
         .flatten({ background: WHITE })
