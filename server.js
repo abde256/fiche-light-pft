@@ -67,18 +67,29 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res) => {
   if (req.body.password === APP_PASSWORD) {
-    res.setHeader('Set-Cookie', `pft_auth=${APP_PASSWORD}; Path=/; HttpOnly; Max-Age=86400`);
+    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    res.setHeader('Set-Cookie', `pft_auth=${encodeURIComponent(APP_PASSWORD)}; Path=/; HttpOnly; Max-Age=86400${secure}`);
     res.redirect('/');
   } else {
     res.redirect('/login?error=1');
   }
 });
 
+function parseCookies(header) {
+  const cookies = {};
+  (header || '').split(';').forEach(part => {
+    const idx = part.indexOf('=');
+    if (idx < 0) return;
+    const key = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    try { cookies[key] = decodeURIComponent(val); } catch { cookies[key] = val; }
+  });
+  return cookies;
+}
+
 function authMiddleware(req, res, next) {
   if (req.path === '/login') return next();
-  const cookies = Object.fromEntries(
-    (req.headers.cookie || '').split(';').map(c => c.trim().split('=').map(decodeURIComponent))
-  );
+  const cookies = parseCookies(req.headers.cookie);
   if (cookies.pft_auth === APP_PASSWORD) return next();
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Non autorisé' });
   res.redirect('/login');
