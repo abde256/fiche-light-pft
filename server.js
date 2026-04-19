@@ -455,6 +455,46 @@ function getCategoryProfile(rayon) {
   };
 }
 
+// ─── Détection automatique du centre visuel d'un fond de scène ───────────────
+//  Downscale à 200 px, cherche la bbox des pixels non-blancs → centre du décor
+
+const _tplCenterCache = {};
+
+async function getTemplateCenter(tplPath, sz) {
+  if (_tplCenterCache[tplPath]) return _tplCenterCache[tplPath];
+
+  const DETECT = 200;
+  const ratio  = sz / DETECT;
+  const { data, info } = await sharp(fs.readFileSync(tplPath))
+    .resize(DETECT, DETECT, { fit: 'cover', position: 'centre' })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const w = info.width, h = info.height;
+  let minX = w, maxX = 0, minY = h, maxY = 0;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 3;
+      if (data[i] < 228 || data[i+1] < 228 || data[i+2] < 228) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  const result = (minX < maxX && minY < maxY)
+    ? { cx: Math.round(((minX + maxX) / 2) * ratio),
+        cy: Math.round(((minY + maxY) / 2) * ratio) }
+    : { cx: Math.round(sz / 2), cy: Math.round(sz / 2) };
+
+  _tplCenterCache[tplPath] = result;
+  return result;
+}
+
 // ─── Routes : Fonds de scène par catégorie ───────────────────────────────────
 
 const RAYONS_VALIDES = ['R20','R21','R22','R23','R24'];
@@ -488,7 +528,9 @@ app.post('/api/templates/:rayon', async (req, res) => {
       .resize(1500, 1500, { fit:'cover', position:'centre', kernel: sharp.kernel.lanczos3 })
       .png()
       .toBuffer();
-    fs.writeFileSync(path.join(TEMPLATES_DIR, `${r}.png`), resized);
+    const dest = path.join(TEMPLATES_DIR, `${r}.png`);
+    fs.writeFileSync(dest, resized);
+    delete _tplCenterCache[dest];
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -498,7 +540,7 @@ app.post('/api/templates/:rayon', async (req, res) => {
 // Supprimer un fond
 app.delete('/api/templates/:rayon', (req, res) => {
   const p = path.join(TEMPLATES_DIR, `${String(req.params.rayon).toUpperCase()}.png`);
-  if (fs.existsSync(p)) fs.unlinkSync(p);
+  if (fs.existsSync(p)) { fs.unlinkSync(p); delete _tplCenterCache[p]; }
   res.json({ ok: true });
 });
 
@@ -609,18 +651,33 @@ app.post('/api/process-image', async (req, res) => {
     if (hasTemplate) {
       const scale  = Math.min(0.95, Math.max(0.40, Number(sceneScale) || 0.68));
       const AREA   = Math.round(SZ * scale);
-      const MH     = Math.floor((SZ - AREA) / 2);
-      // vertOffset : -100 = monter max  /  0 = centré  /  +100 = descendre max
-      const vPct   = Math.min(100, Math.max(-100, Number(vertOffset) || 0));
-      const shift  = Math.round(MH * vPct / 100);
-      const MT     = Math.max(0, Math.min(SZ - AREA, MH + shift));
-      const MB     = SZ - AREA - MT;
+
+      // Centre automatique du décor (ardoise, planche, etc.)
+      const { cx, cy } = await getTemplateCenter(tplPath, SZ);
+
+      // Centrer le produit sur le décor détecté
+      let left = Math.round(cx - AREA / 2);
+      let top  = Math.round(cy - AREA / 2);
+
+      // vertOffset : -100 = monter / 0 = centre auto / +100 = descendre
+      const vPct  = Math.min(100, Math.max(-100, Number(vertOffset) || 0));
+      const vRoom = Math.round(SZ * 0.15);
+      top += Math.round(vRoom * vPct / 100);
+
+      left = Math.max(0, Math.min(SZ - AREA, left));
+      top  = Math.max(0, Math.min(SZ - AREA, top));
+
+      const MT = top;
+      const MB = SZ - AREA - top;
+      const ML = left;
+      const MR = SZ - AREA - left;
+
       scaledPng = await sharp(rgbaPng)
         .resize(AREA, AREA, {
           fit: 'contain', background: TRANS,
           kernel: sharp.kernel.lanczos3, withoutEnlargement: false,
         })
-        .extend({ top:MT, bottom:MB, left:MH, right:MH, background: TRANS })
+        .extend({ top: MT, bottom: MB, left: ML, right: MR, background: TRANS })
         .png()
         .toBuffer();
     } else {
