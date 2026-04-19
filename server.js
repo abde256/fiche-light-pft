@@ -488,9 +488,7 @@ app.post('/api/templates/:rayon', async (req, res) => {
       .resize(1500, 1500, { fit:'cover', position:'centre', kernel: sharp.kernel.lanczos3 })
       .png()
       .toBuffer();
-    const dest = path.join(TEMPLATES_DIR, `${r}.png`);
-    fs.writeFileSync(dest, resized);
-    delete _tplCenterCache[dest];
+    fs.writeFileSync(path.join(TEMPLATES_DIR, `${r}.png`), resized);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -500,7 +498,7 @@ app.post('/api/templates/:rayon', async (req, res) => {
 // Supprimer un fond
 app.delete('/api/templates/:rayon', (req, res) => {
   const p = path.join(TEMPLATES_DIR, `${String(req.params.rayon).toUpperCase()}.png`);
-  if (fs.existsSync(p)) { fs.unlinkSync(p); delete _tplCenterCache[p]; }
+  if (fs.existsSync(p)) fs.unlinkSync(p);
   res.json({ ok: true });
 });
 
