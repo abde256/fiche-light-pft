@@ -678,7 +678,7 @@ app.post('/api/process-image', async (req, res) => {
       outBuffer = await sharp(outBuffer).jpeg({ quality: 80 }).toBuffer();
     }
 
-    const eanStr = String(ean).replace(/\s/g,'') || 'produit';
+    const eanStr = String(ean).replace(/\s/g,'') || 'EAN';
     res.json({
       imageBase64: outBuffer.toString('base64'),
       filename:    `${eanStr}_0.jpg`,

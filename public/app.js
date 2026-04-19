@@ -895,8 +895,9 @@ function handleImageFile(file) {
 
       const eanFld = document.getElementById('imgEan');
       if (!eanFld.value) {
+        const fromFilename = extractEanFromFilename(file.name);
         const mainEan = document.getElementById('ean');
-        if (mainEan && mainEan.value) eanFld.value = mainEan.value;
+        eanFld.value = fromFilename || (mainEan && mainEan.value) || '';
       }
     };
     img.src = e.target.result;
