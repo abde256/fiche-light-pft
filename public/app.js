@@ -837,6 +837,11 @@ function initImageProcessing() {
     document.getElementById('imgVertOffsetVal').textContent =
       v === 0 ? 'Centre' : (v < 0 ? `↑ ${Math.abs(v)}` : `↓ ${v}`);
   });
+  document.getElementById('imgHorizOffset').addEventListener('input', function() {
+    const v = parseInt(this.value, 10);
+    document.getElementById('imgHorizOffsetVal').textContent =
+      v === 0 ? 'Centre' : (v < 0 ? `← ${Math.abs(v)}` : `→ ${v}`);
+  });
   document.getElementById('imgProcessBtn').addEventListener('click', processImage);
   document.getElementById('imgChangeBtn').addEventListener('click', resetImageUI);
   document.getElementById('imgDownloadBtn').addEventListener('click', downloadProcessedImage);
@@ -932,8 +937,9 @@ async function processImage() {
       body: JSON.stringify({
         imageBase64: imgOriginalBase64, ean, removeBg, sensitivity,
         rayon:       document.getElementById('imgRayon').value || currentRayon || '',
-        sceneScale:  parseInt(document.getElementById('imgSceneScale').value,  10) / 100,
+        sceneScale:  parseInt(document.getElementById('imgSceneScale').value,   10) / 100,
         vertOffset:  parseInt(document.getElementById('imgVertOffset').value,   10),
+        horizOffset: parseInt(document.getElementById('imgHorizOffset').value,  10),
       }),
     });
     const data = await res.json();
@@ -1016,6 +1022,11 @@ function initBatchProcessing() {
     const v = parseInt(this.value, 10);
     document.getElementById('batchVertOffsetVal').textContent =
       v === 0 ? 'Centre' : (v < 0 ? `↑ ${Math.abs(v)}` : `↓ ${v}`);
+  });
+  document.getElementById('batchHorizOffset').addEventListener('input', function() {
+    const v = parseInt(this.value, 10);
+    document.getElementById('batchHorizOffsetVal').textContent =
+      v === 0 ? 'Centre' : (v < 0 ? `← ${Math.abs(v)}` : `→ ${v}`);
   });
   document.getElementById('batchProcessBtn').addEventListener('click', processBatch);
   document.getElementById('batchClearBtn').addEventListener('click', resetBatch);
@@ -1124,8 +1135,9 @@ async function processBatch() {
           body: JSON.stringify({
             imageBase64: b64, ean: entry.ean, removeBg, sensitivity,
             rayon:       document.getElementById('batchRayon').value || currentRayon || '',
-            sceneScale:  parseInt(document.getElementById('batchSceneScale').value,  10) / 100,
+            sceneScale:  parseInt(document.getElementById('batchSceneScale').value,   10) / 100,
             vertOffset:  parseInt(document.getElementById('batchVertOffset').value,   10),
+            horizOffset: parseInt(document.getElementById('batchHorizOffset').value,  10),
           }),
         });
         const data = await res.json();
