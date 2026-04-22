@@ -1,8 +1,17 @@
+require('dotenv').config(); // charge .env automatiquement au démarrage
 const express      = require('express');
 const XLSX         = require('xlsx');
 const path         = require('path');
 const fs           = require('fs');
 const { Blob }     = require('buffer');
+const Anthropic    = require('@anthropic-ai/sdk');
+
+// ─── Client Claude (Smart Import) ─────────────────────────────────────────────
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
+const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+if (ANTHROPIC_API_KEY) {
+  console.log('\n🧠  Claude Vision activé — import intelligent image/PDF disponible\n');
+}
 
 let sharp;
 try {
@@ -17,15 +26,48 @@ let aiRemoveBg = null;
 let aiReady    = false;
 let aiError    = null;
 
+// BRIA RMBG-2.0 — modèle spécialisé produits e-commerce (HuggingFace, gratuit)
+// Bien supérieur à @imgly sur les emballages alimentaires (barquettes, films, brillants)
+const HF_TOKEN = process.env.HF_TOKEN || null;
+
+async function removeBgBRIA(imageBuffer) {
+  if (!HF_TOKEN) throw new Error('HF_TOKEN non configuré');
+  // BRIA attend le PNG brut, retourne PNG avec canal alpha
+  const pngBuffer = await sharp(imageBuffer).png().toBuffer();
+  const resp = await fetch('https://api-inference.huggingface.co/models/briaai/RMBG-2.0', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${HF_TOKEN}`,
+      'Content-Type': 'application/octet-stream',
+      'Accept': 'image/png',
+    },
+    body: pngBuffer,
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`BRIA API ${resp.status}: ${err.slice(0, 200)}`);
+  }
+  return Buffer.from(await resp.arrayBuffer());
+}
+
 (async () => {
+  // Tenter BRIA d'abord (si token configuré)
+  if (HF_TOKEN) {
+    console.log('\n🔑  HF_TOKEN détecté — BRIA RMBG-2.0 activé (suppression fond de précision)\n');
+  }
+  // Charger @imgly en fallback local
   try {
     const mod  = await import('@imgly/background-removal-node');
     aiRemoveBg = mod.removeBackground;
     aiReady    = true;
-    console.log('\n🤖  Moteur IA background-removal chargé\n');
+    console.log(HF_TOKEN
+      ? '🤖  Moteur @imgly chargé (fallback si BRIA indisponible)\n'
+      : '\n🤖  Moteur IA background-removal chargé\n'
+    );
   } catch (e) {
     aiError = e.message;
-    console.warn('\n⚠️  Moteur IA non disponible — mode algo classique actif.\n   (' + e.message + ')\n');
+    console.warn('\n⚠️  Moteur IA @imgly non disponible — mode algo classique actif.\n   (' + e.message + ')\n');
   }
 })();
 
@@ -244,6 +286,131 @@ app.post('/api/import', (req, res) => {
   }
 });
 
+// ─── Prompt extraction Claude Vision ─────────────────────────────────────────
+const SMART_IMPORT_PROMPT = `Tu es un expert en référencement produit Carrefour, spécialisé rayons frais (R20-R24).
+Analyse ce document (étiquette produit, capture SAP, photo, PDF fournisseur) et extrais les données en JSON strict.
+
+Retourne UNIQUEMENT un objet JSON valide, sans texte autour, sans markdown.
+Pour chaque champ absent ou incertain, retourne null — ne devine JAMAIS.
+
+{
+  "ean": "code EAN 8 ou 13 chiffres uniquement, ou null",
+  "natureBrute": "nom principal du produit, ex: Saumon, Baguette, Camembert, Steak haché",
+  "attribut": "spécificité complémentaire, ex: Atlantique, de Normandie, Tradition, Façon Bouchère",
+  "marque": "marque en MAJUSCULES sans accents, ex: CARREFOUR, MAISON MONTFORT, ou null",
+  "rayon": "déduire depuis le produit: R20=Charcuterie/Fromage/Traiteur, R21=Poissonnerie, R22=Fruits&Légumes, R23=Boulangerie/Pâtisserie, R24=Boucherie, ou null",
+  "conditionnement": "construire intelligemment depuis le contexte, ex: 'la barquette de 200g', 'la pièce', 'le kilo', ou null",
+  "infoBandeau": "extraire uniquement le poids/quantité, ex: '200g', '1kg', 'la pièce', ou null",
+  "palierCommande": "poids en kg avec exactement 3 décimales, ex: '0.200', '1.500', ou null si non pertinent",
+  "flagBio": true ou false,
+  "flagFQC": true ou false,
+  "conservation": "ex: 'A conserver entre +0°C et +4°C', 'A conserver à température ambiante', ou null",
+  "ingredients": "liste complète des ingrédients si visible, sinon null",
+  "valeursEnergetiques": "ex: '250 kcal / 1045 kJ', ou null",
+  "graisses": "ex: '12g', ou null",
+  "grasSatures": "ex: '4g', ou null",
+  "glucides": "ex: '30g', ou null",
+  "sucres": "ex: '5g', ou null",
+  "proteines": "ex: '8g', ou null",
+  "sel": "ex: '1.2g', ou null",
+  "allergens": {
+    "gluten": false, "lait": false, "soja": false, "arachides": false,
+    "celeri": false, "oeufs": false, "crustaces": false, "poisson": false,
+    "fruitsACoque": false, "moutarde": false, "sesame": false,
+    "sulfites": false, "lupin": false, "mollusques": false
+  },
+  "nomLatin": "nom scientifique si poisson/crustacé visible, ex: 'Salmo salar', ou null",
+  "facettePecheElevage": "'pêché' ou 'élevé' si visible, ou null",
+  "categorie": "'1' ou '2' si fruits/légumes avec catégorie visible, ou null",
+  "viandeBovine": true ou false,
+  "porcFrancais": true ou false,
+  "confidence": {
+    "overall": "high/medium/low — qualité globale de l'extraction",
+    "ean": "high/medium/low",
+    "natureBrute": "high/medium/low",
+    "conditionnement": "high/medium/low",
+    "ingredients": "high/medium/low",
+    "allergens": "high/medium/low"
+  }
+}
+
+Règles métier Carrefour obligatoires:
+- palierCommande: toujours 3 décimales. 200g → "0.200", 1.5kg → "1.500", kilo → null (prix au kg)
+- conditionnement: construire depuis le contexte produit. "barquette 4 tranches 200g" → "la barquette de 4 tranches - 200g"
+- marque: MAJUSCULES, supprimer tous les accents. "Île de France" → "ILE DE FRANCE"
+- allergens: détecter depuis les ingrédients (mots en MAJUSCULES = allergènes en convention Carrefour)
+- rayon: déduire depuis la nature. Poisson → R21, Viande rouge → R24, Charcuterie/Fromage → R20, Pain/Viennoiserie → R23, Légumes/Fruits → R22
+- flagBio: true si "bio", "biologique", "AB" ou logo AB visible
+- flagFQC: true si "Filière Qualité Carrefour" ou "FQC" visible`;
+
+// ─── Route : Statut Smart Import ──────────────────────────────────────────────
+app.get('/api/smart-import-status', (_req, res) => {
+  res.json({ available: !!anthropic, configured: !!ANTHROPIC_API_KEY });
+});
+
+// ─── Route : Smart Import (image + PDF → Claude Vision) ──────────────────────
+app.post('/api/smart-import', async (req, res) => {
+  if (!anthropic) {
+    return res.status(503).json({
+      error: 'Clé API Anthropic non configurée.',
+      hint: 'Ajoutez ANTHROPIC_API_KEY=sk-ant-... dans vos variables d\'environnement et redémarrez.'
+    });
+  }
+
+  const { fileBase64, mimeType } = req.body;
+  if (!fileBase64 || !mimeType) return res.status(400).json({ error: 'Fichier ou type MIME manquant' });
+
+  const SUPPORTED_IMAGES = ['image/jpeg','image/png','image/webp','image/gif'];
+  const isPDF   = mimeType === 'application/pdf';
+  const isImage = SUPPORTED_IMAGES.includes(mimeType);
+  if (!isPDF && !isImage) {
+    return res.status(400).json({ error: `Format non supporté : ${mimeType}. Acceptés : JPG, PNG, WEBP, PDF` });
+  }
+
+  try {
+    // Construire le contenu selon le type de fichier
+    const content = isPDF
+      ? [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 } },
+          { type: 'text', text: SMART_IMPORT_PROMPT }
+        ]
+      : [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: fileBase64 } },
+          { type: 'text', text: SMART_IMPORT_PROMPT }
+        ];
+
+    const message = await anthropic.messages.create({
+      model:      'claude-haiku-4-5-20251001', // rapide + économique : ~$0.001/image
+      max_tokens: 2000,
+      messages:   [{ role: 'user', content }],
+    });
+
+    const raw = message.content[0].text.trim();
+
+    // Extraire le JSON même si Claude ajoute du texte autour
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Réponse IA non parsable — réessayez ou vérifiez le fichier');
+
+    const data = JSON.parse(jsonMatch[0]);
+
+    // Compter les champs extraits (non-null) pour le résumé
+    const fields = ['ean','natureBrute','attribut','marque','conditionnement','infoBandeau',
+                    'palierCommande','conservation','ingredients','valeursEnergetiques'];
+    const filled  = fields.filter(f => data[f] != null).length;
+
+    res.json({
+      extracted:   data,
+      filledCount: filled,
+      totalFields: fields.length,
+      tokens:      message.usage.input_tokens + message.usage.output_tokens,
+    });
+
+  } catch (err) {
+    console.error('Smart import error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Route : Export Excel ─────────────────────────────────────────────────────
 
 app.post('/api/export', (req, res) => {
@@ -400,6 +567,59 @@ function removeIslands(data, w, h) {
   }
 }
 
+// ─── Nettoyage halos post-suppression fond ────────────────────────────────────
+// Pré-composite les bords semi-transparents contre blanc → élimine toute
+// couleur parasite du fond original sur les pixels de bordure.
+async function cleanAlphaHalos(rgbaPng) {
+  const { data, info } = await sharp(rgbaPng).raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3] / 255;
+    data[i]     = Math.round(data[i]     * a + 255 * (1 - a));
+    data[i + 1] = Math.round(data[i + 1] * a + 255 * (1 - a));
+    data[i + 2] = Math.round(data[i + 2] * a + 255 * (1 - a));
+    data[i + 3] = data[i + 3] < 10 ? 0 : data[i + 3];
+  }
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+}
+
+// ─── Centrage automatique par bounding box ────────────────────────────────────
+// Détecte le vrai contour du sujet (pixels alpha > seuil), recadre, puis
+// re-centre avec marges symétriques — élimine tout blanc/espace parasite autour.
+async function autoCropToSubject(rgbaPng) {
+  const { data, info } = await sharp(rgbaPng)
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+
+  let minX = w, maxX = 0, minY = h, maxY = 0;
+  let hasOpaque = false;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 12) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        hasOpaque = true;
+      }
+    }
+  }
+
+  if (!hasOpaque || minX >= maxX || minY >= maxY) return rgbaPng;
+
+  // Légère marge autour du sujet détecté (évite de couper les bords nets)
+  const margin = Math.max(2, Math.round(Math.min(w, h) * 0.005));
+  const left   = Math.max(0, minX - margin);
+  const top    = Math.max(0, minY - margin);
+  const right  = Math.min(w - 1, maxX + margin);
+  const bottom = Math.min(h - 1, maxY + margin);
+
+  return sharp(rgbaPng)
+    .extract({ left, top, width: right - left + 1, height: bottom - top + 1 })
+    .png()
+    .toBuffer();
+}
+
 // ─── Profils d'amélioration marketing par catégorie ──────────────────────────
 
 function getCategoryProfile(rayon) {
@@ -505,7 +725,13 @@ app.delete('/api/templates/:rayon', (req, res) => {
 // ─── Route : Statut moteur IA ─────────────────────────────────────────────────
 
 app.get('/api/ai-status', (_req, res) => {
-  res.json({ ready: aiReady, available: !!aiRemoveBg, error: aiError });
+  res.json({
+    ready:     aiReady || !!HF_TOKEN,
+    available: !!aiRemoveBg || !!HF_TOKEN,
+    engine:    HF_TOKEN ? 'BRIA RMBG-2.0' : aiReady ? '@imgly' : 'flood-fill',
+    bria:      !!HF_TOKEN,
+    error:     (!HF_TOKEN && !aiReady) ? aiError : null,
+  });
 });
 
 // ─── Route : Traitement visuel ────────────────────────────────────────────────
@@ -531,8 +757,22 @@ app.post('/api/process-image', async (req, res) => {
     if (removeBg) {
       let bgDone = false;
 
-      // ── VOIE IA (prioritaire) ─────────────────────────────────────────
-      if (aiRemoveBg) {
+      // ── VOIE 1 : BRIA RMBG-2.0 (prioritaire si HF_TOKEN configuré) ──────
+      // Modèle fine-tuné sur produits e-commerce — zéro halo sur emballages
+      if (HF_TOKEN && !bgDone) {
+        try {
+          console.log('  → BRIA RMBG-2.0 en cours…');
+          rgbaPng = await removeBgBRIA(inputBuffer);
+          rgbaPng = await cleanAlphaHalos(rgbaPng);
+          bgDone  = true;
+          console.log('  ✓ BRIA OK');
+        } catch (briaErr) {
+          console.warn('  ⚠ BRIA échec, fallback @imgly :', briaErr.message);
+        }
+      }
+
+      // ── VOIE 2 : @imgly local (fallback si BRIA indisponible) ────────────
+      if (aiRemoveBg && !bgDone) {
         try {
           const AI_MAX = 1024;
           const meta = await sharp(inputBuffer).metadata();
@@ -545,22 +785,10 @@ app.post('/api/process-image', async (req, res) => {
             output: { format: 'image/png', quality: 1.0, type: 'foreground' },
           });
           rgbaPng = Buffer.from(await resultBlob.arrayBuffer());
-
-          // Nettoyer les pixels résiduels du fond original (halo de couleur)
-          // Pré-composite les bords semi-transparents contre blanc → élimine toute couleur parasite
-          const { data: rd, info: ri } = await sharp(rgbaPng).raw().toBuffer({ resolveWithObject: true });
-          for (let i = 0; i < rd.length; i += 4) {
-            const a = rd[i + 3] / 255;
-            rd[i]     = Math.round(rd[i]     * a + 255 * (1 - a));
-            rd[i + 1] = Math.round(rd[i + 1] * a + 255 * (1 - a));
-            rd[i + 2] = Math.round(rd[i + 2] * a + 255 * (1 - a));
-            rd[i + 3] = rd[i + 3] < 10 ? 0 : rd[i + 3];
-          }
-          rgbaPng = await sharp(rd, { raw: { width: ri.width, height: ri.height, channels: 4 } }).png().toBuffer();
-
+          rgbaPng = await cleanAlphaHalos(rgbaPng);
           bgDone  = true;
         } catch (aiErr) {
-          console.error('IA fallback:', aiErr.message);
+          console.error('  ⚠ @imgly échec, fallback flood-fill :', aiErr.message);
         }
       }
 
@@ -593,6 +821,11 @@ app.post('/api/process-image', async (req, res) => {
     } else {
       rgbaPng = await sharp(inputBuffer).ensureAlpha().png().toBuffer();
     }
+
+    // ── ÉTAPE 1b : Recadrage automatique sur le sujet ────────────────────
+    // Élimine tout espace vide autour du produit avant le centrage —
+    // garantit des marges symétriques quel que soit le cadrage original.
+    if (removeBg) rgbaPng = await autoCropToSubject(rgbaPng);
 
     // ── ÉTAPE 2 : Déterminer le fond ──────────────────────────────────────
     const rayonKey    = String(rayon).toUpperCase();

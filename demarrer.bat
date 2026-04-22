@@ -1,46 +1,55 @@
 @echo off
 title Fiche Light PFT
+cd /d "%~dp0"
+
 echo.
 echo  ====================================
 echo   Fiche Light PFT - Demarrage...
 echo  ====================================
 echo.
 
-cd /d "%~dp0"
+:: Ajouter Node.js au PATH
+set PATH=%PATH%;C:\Program Files\nodejs;%APPDATA%\npm
 
-:: Ajouter Node.js au PATH (au cas ou)
-set PATH=%PATH%;C:\Program Files\nodejs
-
-:: Verifier que node est disponible
+:: Verifier Node.js
 where node >nul 2>&1
 if errorlevel 1 (
-  echo  ERREUR : Node.js n'est pas installe ou introuvable.
-  echo  Telechargez-le sur https://nodejs.org
+  echo  ERREUR : Node.js introuvable.
+  echo  Installez Node.js depuis https://nodejs.org
   pause
   exit /b 1
 )
 
-:: Liberer le port 3003 si deja utilise
-echo  Liberation du port 3003...
+echo  Node.js detecte :
+node --version
+
+:: Liberer le port 3003
 for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":3003 "') do (
   taskkill /F /PID %%a >nul 2>&1
 )
 
-:: Installer les dependances
-echo  Verification des dependances...
-npm install
-echo.
+:: Installer les dependances si node_modules absent
+if not exist "node_modules" (
+  echo  Installation des dependances...
+  npm install
+  if errorlevel 1 (
+    echo  ERREUR lors de npm install
+    pause
+    exit /b 1
+  )
+)
 
-:: Ouvrir le navigateur et lancer le serveur
-echo  Ouverture du navigateur...
+:: Lancer le serveur dans une nouvelle fenetre
+echo  Demarrage du serveur...
+start "Fiche Light PFT - Serveur" cmd /c "node server.js & pause"
+
+:: Attendre que le serveur soit pret
+timeout /T 4 /NOBREAK >nul
+
+:: Ouvrir le navigateur
 start "" "http://localhost:3003"
-echo  Serveur en cours de demarrage sur http://localhost:3003
-echo  (Fermez cette fenetre pour arreter le serveur)
-echo.
-node server.js
 
 echo.
-echo  ====================================
-echo   Serveur arrete.
-echo  ====================================
+echo  Serveur demarre ! Gardez la fenetre "Serveur" ouverte.
+echo.
 pause

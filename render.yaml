@@ -7,6 +7,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false   # à renseigner dans le dashboard Render → Environment
+      - key: HF_TOKEN
+        sync: false   # optionnel — active BRIA RMBG-2.0 (meilleure suppression de fond)
     disk:
       name: templates-storage
       mountPath: /opt/render/project/src/templates

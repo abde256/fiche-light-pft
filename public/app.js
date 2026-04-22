@@ -168,6 +168,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!e.target.checked) { document.getElementById('palierCommande').value = ''; clearErr('palierErr'); }
   });
 
+  // Auto-extraction palier/bandeau depuis le conditionnement
+  document.getElementById('conditionnement').addEventListener('input', applyConditionnementExtraction);
+
   // BCP decoder
   document.getElementById('decodeBcpBtn').addEventListener('click', decodeBCP);
   document.getElementById('bcpInput').addEventListener('keydown', e => { if (e.key==='Enter'){e.preventDefault();decodeBCP();} });
@@ -212,6 +215,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('changeFileBtn').addEventListener('click', resetImport);
   document.getElementById('doImportBtn').addEventListener('click', doImport);
 
+  // ── Import intelligent ──
+  initImportSubtabs();
+  initSmartImport();
+
   // ── Visuels ──
   initImageProcessing();
 });
@@ -248,7 +255,11 @@ function renderChips(containerId, items, targetId) {
   items.forEach(item => {
     const btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'chip'; btn.textContent = item;
-    btn.addEventListener('click', () => { document.getElementById(targetId).value = item; });
+    btn.addEventListener('click', () => {
+      const el = document.getElementById(targetId);
+      el.value = item;
+      el.dispatchEvent(new Event('input'));
+    });
     c.appendChild(btn);
   });
 }
@@ -367,6 +378,47 @@ function autoDetectFlags() {
   document.getElementById('flagFQC').checked = /\bfqc\b|\bfili[eè]re\s+qualit[eé]\b/.test(txt);
 }
 
+// ─── Auto-extraction palier / bandeau depuis le conditionnement ───────────────
+// "la barquette de 480g" → bandeau:"480g", palier:"0.480"
+// "la pièce de 1,5kg"   → bandeau:"1.5kg", palier:"1.500"
+function extractFromConditionnement(cond) {
+  if (!cond) return null;
+
+  // Cherche d'abord en kilogrammes, puis en grammes (ordre de priorité)
+  const kgMatch = cond.match(/(\d+[.,]?\d*)\s*kg/i);
+  const gMatch  = cond.match(/(\d+[.,]?\d*)\s*g\b/i);
+
+  let kg = null;
+  let band = null;
+
+  if (kgMatch) {
+    kg   = parseFloat(kgMatch[1].replace(',', '.'));
+    band = `${kg}kg`;
+  } else if (gMatch) {
+    const g = parseFloat(gMatch[1].replace(',', '.'));
+    kg   = g / 1000;
+    band = `${g}g`;
+  }
+
+  if (kg === null || isNaN(kg) || kg <= 0) return null;
+  return { band, palier: kg.toFixed(3) };
+}
+
+function applyConditionnementExtraction() {
+  const cond    = val('conditionnement');
+  const result  = extractFromConditionnement(cond);
+  if (!result) return;
+
+  const bandEl   = document.getElementById('infoBandeau');
+  const palierEl = document.getElementById('palierCommande');
+
+  // N'écrase que les champs vides pour respecter la saisie manuelle
+  if (!bandEl.value) bandEl.value = result.band;
+  // Le palier n'est pertinent que si "poids variable" est activé
+  const poidsVar = document.getElementById('poidsVariable');
+  if (poidsVar && poidsVar.checked && !palierEl.value) palierEl.value = result.palier;
+}
+
 // ─── BCP decoder ──────────────────────────────────────────────────────────────
 function decodeBCP() {
   const input = document.getElementById('bcpInput').value.trim();
@@ -406,7 +458,7 @@ function getFormData() {
   switch (currentRayon) {
     case 'R20':
       data.ingredients  = val('ingredients');
-      data.allergenes   = checked('allergenes');
+      data.allergens    = checked('allergens');
       data.valeursNutri = val('valeursNutri');
       data.conservation = val('conservation');
       break;
@@ -421,7 +473,7 @@ function getFormData() {
       break;
     case 'R23':
       data.ingredients         = val('ingredients');
-      data.allergenes          = checked('allergenes');
+      data.allergens           = checked('allergens');
       data.valeursEnergetiques = val('valeursEnergetiques2') || data.valeursEnergetiques;
       data.conservation        = val('conservation');
       break;
@@ -493,10 +545,75 @@ function renderProductList() {
           <div class="prod-ean">EAN : ${p.ean||'—'}</div>
         </div>
         <span class="prod-rayon-tag">${p.rayon||'?'}</span>
+        <button class="prod-dup" onclick="duplicateProduct(${i})" title="Dupliquer cette fiche">⧉</button>
         <button class="prod-del" onclick="removeProduct(${i})" title="Supprimer">×</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// ─── Duplication de fiche ─────────────────────────────────────────────────────
+function duplicateProduct(idx) {
+  const src = products[idx];
+  if (!src) return;
+
+  // Basculer sur l'onglet saisie manuelle
+  switchTab('manual');
+
+  // Sélectionner le rayon source
+  if (src.rayon) selectRayon(src.rayon);
+
+  // Remplir les champs standard (micro-délai pour que renderRayonFields soit terminé)
+  setTimeout(() => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+
+    set('ean',                '');           // EAN vide → l'utilisateur doit le saisir
+    set('natureBrute',        src.natureBrute);
+    set('attribut',           src.attribut);
+    set('marque',             src.marque);
+    set('conditionnement',    src.conditionnement);
+    set('infoBandeau',        src.infoBandeau);
+    set('valeursEnergetiques',src.valeursEnergetiques);
+    set('graisses',           src.graisses);
+    set('grasSatures',        src.grasSatures);
+    set('glucides',           src.glucides);
+    set('sucres',             src.sucres);
+    set('proteines',          src.proteines);
+    set('sel',                src.sel);
+    chk('flagBio',            src.flagBio);
+    chk('flagFQC',            src.flagFQC);
+
+    // Poids variable + palier
+    if (src.palierCommande) {
+      chk('poidsVariable', true);
+      document.getElementById('palierRow').style.display = 'grid';
+      set('palierCommande', src.palierCommande);
+    }
+
+    // Allergènes
+    if (src.allergens) {
+      document.querySelectorAll('[data-al]').forEach(cb => {
+        cb.checked = !!src.allergens[cb.dataset.al];
+      });
+    }
+
+    // Champs spécifiques rayon
+    const setIfExists = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    const chkIfExists = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    setIfExists('ingredients',          src.ingredients);
+    setIfExists('conservation',         src.conservation);
+    setIfExists('nomLatin',             src.nomLatin);
+    setIfExists('facettePecheElevage',  src.facettePecheElevage);
+    setIfExists('categorie',            src.categorie);
+    chkIfExists('allergenes',           src.allergenes);
+    chkIfExists('viandeBovine',         src.viandeBovine);
+    chkIfExists('porcFrancais',         src.porcFrancais);
+
+    updateLibellePreview();
+    document.getElementById('ean').focus();
+    toast(`Fiche dupliquée — saisissez le nouvel EAN`, 'info');
+  }, 60);
 }
 
 function updateButtons() {
@@ -521,9 +638,200 @@ function resetForm(keepRayon=true) {
   if (keepRayon && currentRayon) { renderRayonFields(currentRayon); document.getElementById('ean').focus(); }
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// CONTRÔLE QUALITÉ PRÉ-EXPORT
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Vérifie le checksum Luhn d'un EAN-8/13
+function luhnValid(num) {
+  const d = String(num).replace(/\D/g, '');
+  if (d.length < 8) return false;
+  let sum = 0;
+  for (let i = 0; i < d.length; i++) {
+    let n = parseInt(d[d.length - 1 - i]);
+    if (i % 2 === 1) { n *= 2; if (n > 9) n -= 9; }
+    sum += n;
+  }
+  return sum % 10 === 0;
+}
+
+// Extrait le poids en kg depuis un texte libre
+function extractKgFromText(text) {
+  if (!text) return null;
+  const kg = text.match(/(\d+[.,]?\d*)\s*kg/i);
+  if (kg) return parseFloat(kg[1].replace(',', '.'));
+  const g  = text.match(/(\d+[.,]?\d*)\s*g\b/i);
+  if (g)  return parseFloat(g[1].replace(',', '.')) / 1000;
+  return null;
+}
+
+// Mapping allergène → mots-clés MAJUSCULES dans les ingrédients
+const ALLERGEN_KEYWORDS = {
+  gluten:      ['GLUTEN','BLE','FROMENT','SEIGLE','ORGE','AVOINE','EPEAUTRE','KAMUT','TRITICALE'],
+  lait:        ['LAIT','LACTOSE','BEURRE','CREME','FROMAGE','WHEY','CASÉINE','CASEINE'],
+  soja:        ['SOJA','SOYA'],
+  arachides:   ['ARACHIDE','CACAHUETE','CACAHUÈTE'],
+  celeri:      ['CELERI','CÉLERI'],
+  oeufs:       ['OEUF','ŒUF','ALBUMINE','LYSOZYME'],
+  crustaces:   ['CRUSTACE','CRUSTACÉ','CREVETTE','HOMARD','LANGOUSTE','CRABE'],
+  poisson:     ['POISSON','ANCHOIS','SARDINE','THON','SAUMON','CABILLAUD','MERLU'],
+  fruitsACoque:['NOIX','AMANDE','NOISETTE','NOIX DE CAJOU','PISTACHE','PECAN','MACADAMIA','PÉCAN'],
+  moutarde:    ['MOUTARDE'],
+  sesame:      ['SESAME','SÉSAME','TAHINI'],
+  sulfites:    ['SULFITE','DIOXYDE DE SOUFRE','ANHYDRIDE SULFUREUX'],
+  lupin:       ['LUPIN'],
+  mollusques:  ['MOLLUSQUE','MOULE','HUÎTRE','HUITRE','CALAMAR','SEICHE','ESCARGOT'],
+};
+
+function auditProduct(p, idx) {
+  const errors   = []; // bloquants
+  const warnings = []; // non-bloquants
+
+  const label = buildLibelle(p) || `Produit #${idx + 1}`;
+
+  // ── Champs obligatoires universels ──────────────────────────────────────────
+  if (!p.ean)           errors.push('EAN manquant');
+  if (!p.natureBrute)   errors.push('Nature brute manquante');
+  if (!p.conditionnement) errors.push('Conditionnement manquant');
+
+  // ── EAN : format + Luhn ────────────────────────────────────────────────────
+  if (p.ean) {
+    if (!/^\d{8,13}$/.test(p.ean))  errors.push(`EAN invalide : "${p.ean}" (doit être 8 à 13 chiffres)`);
+    else if (!luhnValid(p.ean))      errors.push(`EAN "${p.ean}" : checksum Luhn incorrect`);
+  }
+
+  // ── Palier cohérent avec le poids du conditionnement ────────────────────────
+  if (p.palierCommande && p.conditionnement) {
+    const palierKg = parseFloat(p.palierCommande);
+    const condKg   = extractKgFromText(p.conditionnement);
+    if (condKg && palierKg && Math.abs(palierKg - condKg) / condKg > 0.15) {
+      warnings.push(`Palier ${p.palierCommande} kg incohérent avec "${p.conditionnement}" (attendu ~${condKg.toFixed(3)} kg)`);
+    }
+  }
+
+  // ── Flags Bio / FQC cohérents avec le libellé ────────────────────────────────
+  const libLow = (buildLibelle(p) + ' ' + (p.attribut || '')).toLowerCase();
+  if (!p.flagBio && /\bbio\b/.test(libLow))
+    warnings.push('Flag Bio non coché alors que "bio" apparaît dans le libellé');
+  if (!p.flagFQC && /\bfqc\b|\bfili.re qualit/.test(libLow))
+    warnings.push('Flag FQC non coché alors que "FQC" apparaît dans le libellé');
+
+  // ── Allergènes cohérents avec les ingrédients ───────────────────────────────
+  if (p.ingredients) {
+    const ingUp = p.ingredients.toUpperCase();
+    Object.entries(ALLERGEN_KEYWORDS).forEach(([al, keywords]) => {
+      const found    = keywords.some(kw => ingUp.includes(kw));
+      const checked  = p.allergens && p.allergens[al];
+      if (found && !checked)
+        errors.push(`Allergène détecté dans les ingrédients (${keywords[0]}) mais "${al}" non coché`);
+    });
+  }
+
+  // ── Champs obligatoires spécifiques rayon ───────────────────────────────────
+  if (p.rayon === 'R20' || p.rayon === 'R23') {
+    if (!p.ingredients)  warnings.push('Ingrédients non renseignés (obligatoire en R20/R23)');
+    if (!p.conservation) warnings.push('Conservation non renseignée');
+  }
+  if (p.rayon === 'R21') {
+    if (!p.nomLatin)             warnings.push('Nom latin manquant (obligatoire en poissonnerie)');
+    if (!p.facettePecheElevage)  warnings.push('Facette Pêche/Élevage manquante');
+    if (!p.conservation)         warnings.push('Conservation non renseignée');
+  }
+  if (p.rayon === 'R22' && !p.categorie)
+    warnings.push('Catégorie (Bio/Non-bio) non renseignée');
+
+  return { label, errors, warnings, idx };
+}
+
+function runQualityCheck() {
+  return products.map((p, i) => auditProduct(p, i));
+}
+
+// ─── Modal contrôle qualité ───────────────────────────────────────────────────
+function showQCModal(results, onConfirm) {
+  // Compter erreurs et avertissements totaux
+  const totalErrors   = results.reduce((n, r) => n + r.errors.length,   0);
+  const totalWarnings = results.reduce((n, r) => n + r.warnings.length, 0);
+  const hasErrors     = totalErrors > 0;
+
+  // Construire le contenu
+  const rows = results
+    .filter(r => r.errors.length || r.warnings.length)
+    .map(r => {
+      const errHtml = r.errors.map(e =>
+        `<li class="qc-item qc-error"><span class="qc-icon">✗</span>${e}</li>`).join('');
+      const wrnHtml = r.warnings.map(w =>
+        `<li class="qc-item qc-warn"><span class="qc-icon">⚠</span>${w}</li>`).join('');
+      return `<div class="qc-product">
+        <div class="qc-product-label">${r.label} <span class="qc-rayon">${products[r.idx].rayon||'?'}</span></div>
+        <ul class="qc-list">${errHtml}${wrnHtml}</ul>
+      </div>`;
+    }).join('');
+
+  const bodyHtml = rows || '<div class="qc-ok">✅ Toutes les fiches sont valides !</div>';
+
+  const modal = document.createElement('div');
+  modal.className = 'qc-overlay';
+  modal.innerHTML = `
+    <div class="qc-modal">
+      <div class="qc-header">
+        <div class="qc-title">Contrôle qualité avant export</div>
+        <div class="qc-summary ${hasErrors ? 'has-errors' : totalWarnings ? 'has-warnings' : 'all-ok'}">
+          ${hasErrors
+            ? `${totalErrors} erreur(s) bloquante(s) · ${totalWarnings} avertissement(s)`
+            : totalWarnings
+              ? `${totalWarnings} avertissement(s) — export possible`
+              : `${products.length} fiche(s) validée(s) — aucun problème`
+          }
+        </div>
+      </div>
+      <div class="qc-body">${bodyHtml}</div>
+      <div class="qc-footer">
+        <button class="btn btn-ghost" id="qcCloseBtn">Corriger</button>
+        ${!hasErrors
+          ? `<button class="btn btn-export" id="qcConfirmBtn">📥 Exporter quand même</button>`
+          : ''
+        }
+        ${!hasErrors && !totalWarnings
+          ? `<button class="btn btn-export" id="qcConfirmBtn">📥 Exporter</button>`
+          : ''
+        }
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('qc-visible'));
+
+  modal.querySelector('#qcCloseBtn').addEventListener('click', () => closeQCModal(modal));
+  const confirmBtn = modal.querySelector('#qcConfirmBtn');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => { closeQCModal(modal); onConfirm(); });
+  }
+  modal.addEventListener('click', e => { if (e.target === modal) closeQCModal(modal); });
+}
+
+function closeQCModal(modal) {
+  modal.classList.remove('qc-visible');
+  setTimeout(() => modal.remove(), 250);
+}
+
 // ─── Export Excel ─────────────────────────────────────────────────────────────
 async function exportExcel() {
   if (!products.length) return;
+
+  // Contrôle qualité avant export
+  const qcResults  = runQualityCheck();
+  const hasErrors  = qcResults.some(r => r.errors.length > 0);
+  const hasIssues  = qcResults.some(r => r.errors.length || r.warnings.length);
+
+  if (hasErrors || hasIssues) {
+    showQCModal(qcResults, () => doExport());
+    return;
+  }
+  doExport();
+}
+
+async function doExport() {
   const btn = document.getElementById('exportBtn');
   btn.textContent='⏳ Génération…'; btn.disabled=true;
   try {
@@ -785,6 +1093,542 @@ function toast(msg,type=''){
   void el.offsetWidth; el.classList.add('show');
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>el.classList.remove('show'),3200);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// IMPORT INTELLIGENT (CLAUDE VISION)
+// ═════════════════════════════════════════════════════════════════════════════
+
+let siExtracted = null; // données extraites en attente de validation
+
+// Labels lisibles pour le panel résultats
+const SI_FIELD_LABELS = {
+  ean:               { label: 'EAN',                    group: 'identification' },
+  natureBrute:       { label: 'Nature brute',           group: 'identification' },
+  attribut:          { label: 'Attribut',               group: 'identification' },
+  marque:            { label: 'Marque produit',         group: 'identification' },
+  rayon:             { label: 'Rayon détecté',          group: 'identification' },
+  conditionnement:   { label: 'Conditionnement',        group: 'commercial' },
+  infoBandeau:       { label: 'Info bandeau',           group: 'commercial' },
+  palierCommande:    { label: 'Palier de commande',     group: 'commercial' },
+  flagBio:           { label: 'Flag Bio',               group: 'commercial' },
+  flagFQC:           { label: 'Flag FQC',               group: 'commercial' },
+  conservation:      { label: 'Conservation',           group: 'commercial' },
+  ingredients:       { label: 'Ingrédients',            group: 'composition' },
+  valeursEnergetiques:{ label: 'Valeur énergétique',   group: 'nutrition' },
+  graisses:          { label: 'Matières grasses',       group: 'nutrition' },
+  grasSatures:       { label: 'dont acides gras sat.',  group: 'nutrition' },
+  glucides:          { label: 'Glucides',               group: 'nutrition' },
+  sucres:            { label: 'dont sucres',            group: 'nutrition' },
+  proteines:         { label: 'Protéines',              group: 'nutrition' },
+  sel:               { label: 'Sel',                    group: 'nutrition' },
+  nomLatin:          { label: 'Nom latin',              group: 'specifique' },
+  facettePecheElevage:{ label: 'Pêche / Élevage',      group: 'specifique' },
+  categorie:         { label: 'Catégorie',              group: 'specifique' },
+  viandeBovine:      { label: 'Viande Bovine Française',group: 'specifique' },
+  porcFrancais:      { label: 'Porc Français',          group: 'specifique' },
+};
+
+const SI_ALLERGEN_LABELS = {
+  gluten:'Gluten', lait:'Lactose', soja:'Soja', arachides:'Arachides',
+  celeri:'Céleri', oeufs:'Œufs', crustaces:'Crustacés', poisson:'Poisson',
+  fruitsACoque:'Fruits à coque', moutarde:'Moutarde', sesame:'Sésame',
+  sulfites:'Sulfites', lupin:'Lupin', mollusques:'Mollusques',
+};
+
+function initSmartImport() {
+  fetch('/api/smart-import-status')
+    .then(r => r.json())
+    .then(s => {
+      if (!s.available) {
+        document.getElementById('siNoKey').style.display     = 'flex';
+        document.getElementById('siUploadZone').style.display = 'none';
+      }
+    }).catch(() => {});
+
+  const zone      = document.getElementById('siUploadZone');
+  const fileInput = document.getElementById('siFileInput');
+
+  document.getElementById('siBrowseBtn').addEventListener('click', () => fileInput.click());
+  zone.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') fileInput.click(); });
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files).filter(f => SI_ALLOWED.includes(f.type));
+    if (!files.length) { toast('Aucun fichier compatible (JPG, PNG, WEBP, PDF)', 'error'); return; }
+    files.length === 1 ? handleSmartImportFile(files[0]) : handleBatchSmartImport(files);
+  });
+  fileInput.addEventListener('change', () => {
+    const files = Array.from(fileInput.files);
+    fileInput.value = '';
+    if (!files.length) return;
+    files.length === 1 ? handleSmartImportFile(files[0]) : handleBatchSmartImport(files);
+  });
+
+  // Résultats fichier unique
+  document.getElementById('siRetryBtn').addEventListener('click',  resetSmartImport);
+  document.getElementById('siRetryBtn2').addEventListener('click', resetSmartImport);
+  document.getElementById('siFillBtn').addEventListener('click',   applySmartImport);
+
+  // Résultats batch
+  document.getElementById('siBatchRetryBtn').addEventListener('click', resetSmartImport);
+  document.getElementById('siBatchAddAllBtn').addEventListener('click', addAllBatchToLot);
+  document.getElementById('siBatchExportBtn').addEventListener('click', exportBatchSelection);
+  document.getElementById('siBatchSelectAll').addEventListener('change', e => {
+    document.querySelectorAll('.si-batch-check').forEach(cb => {
+      if (!cb.disabled) cb.checked = e.target.checked;
+    });
+  });
+}
+
+const SI_ALLOWED  = ['image/jpeg','image/png','image/webp','application/pdf'];
+const SI_MAX_MB   = 20;
+const SI_CONCURRENCY = 3; // fichiers traités en parallèle
+
+// Résultats batch en mémoire : [{ file, status, data, error, product }]
+let siBatchRows = [];
+
+async function handleSmartImportFile(file) {
+  if (file.size > SI_MAX_MB * 1024 * 1024) {
+    toast(`Fichier trop volumineux (max ${SI_MAX_MB} MB)`, 'error'); return;
+  }
+  if (!SI_ALLOWED.includes(file.type)) {
+    toast('Format non supporté — utilisez JPG, PNG, WEBP ou PDF', 'error'); return;
+  }
+
+  document.getElementById('siUploadZone').style.display   = 'none';
+  document.getElementById('siProcessing').style.display   = 'flex';
+  document.getElementById('siResults').style.display      = 'none';
+  document.getElementById('siBatchResults').style.display = 'none';
+  document.getElementById('siBatchProgWrap').style.display = 'none';
+  document.getElementById('siProcessingTitle').textContent = 'Claude analyse le document…';
+  document.getElementById('siProcessingSub').textContent =
+    file.type === 'application/pdf' ? 'Lecture du PDF en cours…' : 'Analyse de l\'image…';
+
+  try {
+    // Redimensionner les images pour respecter la limite Claude (~5MB base64 max)
+    const b64 = file.type === 'application/pdf'
+      ? await fileToBase64(file)
+      : await readFileAsBase64(file, 2048);
+
+    const res  = await fetch('/api/smart-import', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ fileBase64: b64, mimeType: file.type }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+    siExtracted = data.extracted;
+    renderSmartImportResults(data);
+
+  } catch (err) {
+    toast('Erreur import intelligent : ' + err.message, 'error');
+    resetSmartImport();
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => {
+      // Retirer le préfixe data:...;base64,
+      const result = e.target.result;
+      resolve(result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderSmartImportResults(data) {
+  document.getElementById('siProcessing').style.display = 'none';
+  document.getElementById('siResults').style.display    = 'block';
+
+  const d   = data.extracted;
+  const cfg = d.confidence || {};
+
+  // Résumé
+  document.getElementById('siResultSub').textContent =
+    `${data.filledCount} champs extraits sur ${data.totalFields} · ${data.tokens || '?'} tokens utilisés`;
+
+  // Barre de confiance globale
+  const overall = cfg.overall || 'medium';
+  const confMap = { high: { label: 'Confiance haute', cls: 'si-conf-high' },
+                    medium: { label: 'Confiance moyenne', cls: 'si-conf-medium' },
+                    low:  { label: 'Confiance faible — vérifiez les champs', cls: 'si-conf-low' } };
+  const conf = confMap[overall] || confMap.medium;
+  document.getElementById('siConfidenceBar').innerHTML =
+    `<span class="si-conf-badge ${conf.cls}">${conf.label}</span>
+     <span class="si-conf-hint">Vérifiez les champs en orange avant de valider</span>`;
+
+  // Grille de champs
+  const grid = document.getElementById('siFieldsGrid');
+  grid.innerHTML = '';
+
+  // Groupes à afficher
+  const groups = [
+    { id: 'identification', label: 'Identification' },
+    { id: 'commercial',     label: 'Données commerciales' },
+    { id: 'composition',    label: 'Composition' },
+    { id: 'nutrition',      label: 'Valeurs nutritionnelles' },
+    { id: 'specifique',     label: 'Champs spécifiques rayon' },
+  ];
+
+  groups.forEach(group => {
+    const fields = Object.entries(SI_FIELD_LABELS).filter(([, v]) => v.group === group.id);
+    const hasData = fields.some(([k]) => d[k] != null && d[k] !== false);
+    if (!hasData) return;
+
+    const section = document.createElement('div');
+    section.className = 'si-group';
+    section.innerHTML = `<div class="si-group-title">${group.label}</div>`;
+
+    fields.forEach(([key, meta]) => {
+      const value = d[key];
+      if (value == null) return;
+
+      const fieldConf = cfg[key] || overall;
+      const isEmpty   = value === false || value === '' || value === null;
+      if (isEmpty && key !== 'flagBio' && key !== 'flagFQC' && key !== 'viandeBovine' && key !== 'porcFrancais') return;
+
+      let displayVal = '';
+      if (typeof value === 'boolean') displayVal = value ? '✅ TRUE' : '⬜ FALSE';
+      else displayVal = String(value);
+
+      // Tronquer les longs textes (ingrédients)
+      const truncated = displayVal.length > 120 ? displayVal.slice(0, 120) + '…' : displayVal;
+
+      const row = document.createElement('div');
+      row.className = `si-field si-field-${fieldConf}`;
+      row.innerHTML = `
+        <div class="si-field-label">${meta.label}</div>
+        <div class="si-field-value" title="${displayVal.replace(/"/g,'&quot;')}">${truncated}</div>
+        <div class="si-field-conf si-conf-dot-${fieldConf}"></div>`;
+      section.appendChild(row);
+    });
+
+    // Allergènes détectés
+    if (group.id === 'composition' && d.allergens) {
+      const detected = Object.entries(d.allergens).filter(([,v]) => v).map(([k]) => SI_ALLERGEN_LABELS[k] || k);
+      if (detected.length) {
+        const row = document.createElement('div');
+        row.className = `si-field si-field-${cfg.allergens || overall}`;
+        row.innerHTML = `
+          <div class="si-field-label">Allergènes</div>
+          <div class="si-field-value">${detected.join(' · ')}</div>
+          <div class="si-field-conf si-conf-dot-${cfg.allergens || overall}"></div>`;
+        section.appendChild(row);
+      }
+    }
+
+    if (section.children.length > 1) grid.appendChild(section);
+  });
+}
+
+function resetSmartImport() {
+  siExtracted = null;
+  siBatchRows = [];
+  document.getElementById('siUploadZone').style.display    = 'flex';
+  document.getElementById('siProcessing').style.display    = 'none';
+  document.getElementById('siResults').style.display       = 'none';
+  document.getElementById('siBatchResults').style.display  = 'none';
+  document.getElementById('siBatchProgWrap').style.display = 'none';
+  const retryBtn = document.getElementById('siRetryBtn');
+  if (retryBtn) retryBtn.textContent = '← Nouveau fichier';
+}
+
+function applySmartImport() {
+  if (!siExtracted) return;
+  const d = siExtracted;
+
+  // Basculer sur la saisie manuelle
+  switchTab('manual');
+
+  // Sélectionner le rayon détecté
+  const rayon = d.rayon && ['R20','R21','R22','R23','R24'].includes(d.rayon) ? d.rayon : null;
+  if (rayon) selectRayon(rayon);
+
+  setTimeout(() => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+
+    set('ean',                 d.ean);
+    set('natureBrute',         d.natureBrute);
+    set('attribut',            d.attribut);
+    set('marque',              d.marque);
+    set('conditionnement',     d.conditionnement);
+    set('infoBandeau',         d.infoBandeau);
+    set('valeursEnergetiques', d.valeursEnergetiques);
+    set('graisses',            d.graisses);
+    set('grasSatures',         d.grasSatures);
+    set('glucides',            d.glucides);
+    set('sucres',              d.sucres);
+    set('proteines',           d.proteines);
+    set('sel',                 d.sel);
+    chk('flagBio',             d.flagBio);
+    chk('flagFQC',             d.flagFQC);
+
+    // Palier de commande
+    if (d.palierCommande) {
+      chk('poidsVariable', true);
+      document.getElementById('palierRow').style.display = 'grid';
+      set('palierCommande', d.palierCommande);
+    }
+
+    // Allergènes
+    if (d.allergens) {
+      document.querySelectorAll('[data-al]').forEach(cb => {
+        cb.checked = !!d.allergens[cb.dataset.al];
+      });
+    }
+
+    // Champs spécifiques rayon
+    const setIfExists = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    const chkIfExists = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    setIfExists('ingredients',         d.ingredients);
+    setIfExists('conservation',        d.conservation);
+    setIfExists('nomLatin',            d.nomLatin);
+    setIfExists('facettePecheElevage', d.facettePecheElevage);
+    setIfExists('categorie',           d.categorie);
+    chkIfExists('viandeBovine',        d.viandeBovine);
+    chkIfExists('porcFrancais',        d.porcFrancais);
+
+    updateLibellePreview();
+    autoDetectFlags();
+
+    // Réinitialiser le panel pour la prochaine utilisation
+    siExtracted = null;
+    resetSmartImport();
+
+    toast('Formulaire rempli depuis l\'import IA — vérifiez et ajoutez au lot', 'info');
+    document.getElementById('ean').focus();
+  }, rayon ? 80 : 0);
+}
+
+// ─── Batch smart import ───────────────────────────────────────────────────────
+
+async function handleBatchSmartImport(files) {
+  const valid = files.filter(f => {
+    if (!SI_ALLOWED.includes(f.type))  { toast(`"${f.name}" : format non supporté`, 'error'); return false; }
+    if (f.size > SI_MAX_MB * 1024 * 1024) { toast(`"${f.name}" : trop volumineux (max ${SI_MAX_MB} MB)`, 'error'); return false; }
+    return true;
+  });
+  if (!valid.length) return;
+
+  siBatchRows = [];
+  document.getElementById('siUploadZone').style.display    = 'none';
+  document.getElementById('siResults').style.display       = 'none';
+  document.getElementById('siBatchResults').style.display  = 'none';
+  document.getElementById('siProcessing').style.display    = 'flex';
+  document.getElementById('siProcessingTitle').textContent = `Traitement de ${valid.length} fichier(s) en cours…`;
+  document.getElementById('siProcessingSub').textContent   = 'Claude analyse chaque document';
+
+  const wrap  = document.getElementById('siBatchProgWrap');
+  const fill  = document.getElementById('siBatchProgFill');
+  const label = document.getElementById('siBatchProgLabel');
+  wrap.style.display = 'block';
+  fill.style.width   = '0%';
+  label.textContent  = `0 / ${valid.length}`;
+
+  let done = 0;
+
+  // Traitement concurrent par tranches de SI_CONCURRENCY
+  for (let i = 0; i < valid.length; i += SI_CONCURRENCY) {
+    const chunk = valid.slice(i, i + SI_CONCURRENCY);
+    const results = await Promise.all(chunk.map(f => processFileForBatch(f)));
+    results.forEach(r => siBatchRows.push(r));
+    done += chunk.length;
+    const pct = Math.round((done / valid.length) * 100);
+    fill.style.width  = pct + '%';
+    label.textContent = `${done} / ${valid.length}`;
+  }
+
+  document.getElementById('siProcessing').style.display    = 'none';
+  wrap.style.display = 'none';
+  renderBatchResults(siBatchRows);
+}
+
+async function processFileForBatch(file) {
+  try {
+    // Redimensionner les images pour respecter la limite Claude (~5MB base64 max)
+    const b64 = file.type === 'application/pdf'
+      ? await fileToBase64(file)
+      : await readFileAsBase64(file, 2048);
+    const res  = await fetch('/api/smart-import', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ fileBase64: b64, mimeType: file.type }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+    return { file, status: 'ok', data, product: buildProductFromExtracted(data.extracted) };
+  } catch (err) {
+    return { file, status: 'error', error: err.message };
+  }
+}
+
+function buildProductFromExtracted(d) {
+  if (!d) return {};
+  const p = {
+    ean:                 d.ean              || '',
+    natureBrute:         d.natureBrute      || '',
+    attribut:            d.attribut         || '',
+    marque:              d.marque           || '',
+    rayon:               d.rayon            || '',
+    conditionnement:     d.conditionnement  || '',
+    infoBandeau:         d.infoBandeau      || '',
+    palierCommande:      d.palierCommande   || '',
+    flagBio:             !!d.flagBio,
+    flagFQC:             !!d.flagFQC,
+    ingredients:         d.ingredients      || '',
+    valeursEnergetiques: d.valeursEnergetiques || '',
+    graisses:            d.graisses         || '',
+    grasSatures:         d.grasSatures      || '',
+    glucides:            d.glucides         || '',
+    sucres:              d.sucres           || '',
+    proteines:           d.proteines        || '',
+    sel:                 d.sel              || '',
+    conservation:        d.conservation     || '',
+    nomLatin:            d.nomLatin         || '',
+    facettePecheElevage: d.facettePecheElevage || '',
+    categorie:           d.categorie        || '',
+    viandeBovine:        !!d.viandeBovine,
+    porcFrancais:        !!d.porcFrancais,
+    allergens:           d.allergens        || {},
+  };
+  // Extraire palier/bandeau depuis le conditionnement si manquant
+  if (p.conditionnement) {
+    const ex = extractFromConditionnement(p.conditionnement);
+    if (ex) {
+      if (!p.palierCommande && ex.palier) p.palierCommande = ex.palier;
+      if (!p.infoBandeau   && ex.band)   p.infoBandeau   = ex.band;
+    }
+  }
+  return p;
+}
+
+function renderBatchResults(rows) {
+  const ok    = rows.filter(r => r.status === 'ok').length;
+  const err   = rows.filter(r => r.status === 'error').length;
+
+  document.getElementById('siBatchSub').textContent =
+    `${ok} extrait(s) avec succès · ${err} erreur(s)`;
+  document.getElementById('siBatchStats').textContent =
+    `${ok} sur ${rows.length} prêts à importer`;
+
+  const tbody = document.getElementById('siBatchTableBody');
+  tbody.innerHTML = '';
+
+  rows.forEach((row, idx) => {
+    const tr   = document.createElement('tr');
+    const d    = row.data && row.data.extracted;
+    const conf = d && d.confidence ? (d.confidence.overall || 'medium') : null;
+    const confLabel = { high:'Haute', medium:'Moyenne', low:'Faible' };
+
+    const isOk = row.status === 'ok';
+
+    tr.innerHTML = `
+      <td><input type="checkbox" class="si-batch-check" data-idx="${idx}" ${isOk ? '' : 'disabled'}></td>
+      <td class="si-batch-filename" title="${row.file.name}">${row.file.name}</td>
+      <td>${isOk ? (d.ean || '—') : '—'}</td>
+      <td>${isOk ? (d.natureBrute || '—') : '—'}</td>
+      <td>${isOk ? (d.conditionnement || '—') : '—'}</td>
+      <td>${isOk ? (d.rayon || '—') : '—'}</td>
+      <td>${isOk && conf ? `<span class="si-conf-badge si-conf-${conf}">${confLabel[conf]}</span>` : '—'}</td>
+      <td>${isOk
+        ? '<span class="si-batch-status si-batch-ok">✓ Extrait</span>'
+        : `<span class="si-batch-status si-batch-err">✗ Erreur</span><div class="si-batch-errmsg">${(row.error || 'Erreur inconnue').replace(/</g,'&lt;').slice(0,120)}</div>`}</td>
+      <td>${isOk ? `<button class="btn btn-ghost btn-xs si-batch-preview-btn" data-idx="${idx}">Voir</button>` : ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Bouton "Voir"
+  tbody.querySelectorAll('.si-batch-preview-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = siBatchRows[+btn.dataset.idx];
+      if (!row || !row.data) return;
+      siExtracted = row.data.extracted;
+      renderSmartImportResults(row.data);
+      document.getElementById('siBatchResults').style.display = 'none';
+      document.getElementById('siResults').style.display      = 'block';
+      // Ajouter bouton retour batch
+      const retryBtn = document.getElementById('siRetryBtn');
+      if (retryBtn) retryBtn.textContent = '← Retour aux résultats batch';
+      retryBtn && retryBtn.addEventListener('click', () => {
+        document.getElementById('siResults').style.display      = 'none';
+        document.getElementById('siBatchResults').style.display = 'block';
+        retryBtn.textContent = '← Recommencer';
+      }, { once: true });
+    });
+  });
+
+  document.getElementById('siBatchResults').style.display = 'block';
+}
+
+function getCheckedBatchProducts() {
+  const checked = Array.from(document.querySelectorAll('.si-batch-check:checked'));
+  if (!checked.length) { toast('Aucune ligne sélectionnée', 'error'); return null; }
+  const selected = [];
+  checked.forEach(cb => {
+    const row = siBatchRows[+cb.dataset.idx];
+    if (row && row.status === 'ok') selected.push(row.product);
+  });
+  if (!selected.length) { toast('Aucune extraction valide sélectionnée', 'error'); return null; }
+  return selected;
+}
+
+function addAllBatchToLot() {
+  const selected = getCheckedBatchProducts();
+  if (!selected) return;
+  selected.forEach(p => products.push(p));
+  renderProductList();
+  toast(`${selected.length} produit(s) ajouté(s) au lot — vous pouvez continuer l'import ou exporter`, 'success');
+}
+
+async function exportBatchSelection() {
+  const selected = getCheckedBatchProducts();
+  if (!selected) return;
+
+  const btn = document.getElementById('siBatchExportBtn');
+  btn.textContent = '⏳ Génération…'; btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ products: selected }),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Erreur serveur'); }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `import-ia-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`${selected.length} fiche(s) exportée(s) en Excel !`, 'success');
+  } catch (err) {
+    toast('Erreur export : ' + err.message, 'error');
+  } finally {
+    btn.textContent = '⬇ Exporter sélection Excel'; btn.disabled = false;
+  }
+}
+
+// Sous-onglets import
+function initImportSubtabs() {
+  document.querySelectorAll('.import-stab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.import-stab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.istab;
+      document.getElementById('istab-excel').style.display = tab === 'excel' ? 'block' : 'none';
+      document.getElementById('istab-ai').style.display    = tab === 'ai'    ? 'block' : 'none';
+    });
+  });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
