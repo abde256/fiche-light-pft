@@ -1099,7 +1099,8 @@ function toast(msg,type=''){
 // IMPORT INTELLIGENT (CLAUDE VISION)
 // ═════════════════════════════════════════════════════════════════════════════
 
-let siExtracted = null; // données extraites en attente de validation
+let siExtracted = null;  // données extraites en attente de validation
+let siFilename  = null;  // nom du fichier source (pour fallback EAN)
 
 // Labels lisibles pour le panel résultats
 const SI_FIELD_LABELS = {
@@ -1222,6 +1223,7 @@ async function handleSmartImportFile(file) {
     if (!res.ok) throw new Error(data.error || 'Erreur serveur');
 
     siExtracted = data.extracted;
+    siFilename  = file.name;
     renderSmartImportResults(data);
 
   } catch (err) {
@@ -1330,6 +1332,7 @@ function renderSmartImportResults(data) {
 
 function resetSmartImport() {
   siExtracted = null;
+  siFilename  = null;
   siBatchRows = [];
   document.getElementById('siUploadZone').style.display    = 'flex';
   document.getElementById('siProcessing').style.display    = 'none';
@@ -1355,7 +1358,7 @@ function applySmartImport() {
     const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
     const chk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
 
-    set('ean',                 d.ean);
+    set('ean', (d.ean && String(d.ean).trim()) || (siFilename ? extractEanFromFilename(siFilename) : ''));
     set('natureBrute',         d.natureBrute);
     set('attribut',            d.attribut);
     set('marque',              d.marque);
@@ -1464,16 +1467,19 @@ async function processFileForBatch(file) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erreur serveur');
-    return { file, status: 'ok', data, product: buildProductFromExtracted(data.extracted) };
+    return { file, status: 'ok', data, product: buildProductFromExtracted(data.extracted, file.name) };
   } catch (err) {
     return { file, status: 'error', error: err.message };
   }
 }
 
-function buildProductFromExtracted(d) {
+function buildProductFromExtracted(d, filename) {
   if (!d) return {};
+  // EAN : priorité à ce que Claude détecte, sinon on lit le nom du fichier
+  const eanFromFile = filename ? extractEanFromFilename(filename) : '';
+  const eanResolved = (d.ean && String(d.ean).trim()) || eanFromFile || '';
   const p = {
-    ean:                 d.ean              || '',
+    ean:                 eanResolved,
     natureBrute:         d.natureBrute      || '',
     attribut:            d.attribut         || '',
     marque:              d.marque           || '',
@@ -1533,7 +1539,7 @@ function renderBatchResults(rows) {
     tr.innerHTML = `
       <td><input type="checkbox" class="si-batch-check" data-idx="${idx}" ${isOk ? '' : 'disabled'}></td>
       <td class="si-batch-filename" title="${row.file.name}">${row.file.name}</td>
-      <td>${isOk ? (d.ean || '—') : '—'}</td>
+      <td>${isOk ? (row.product.ean || '—') : '—'}</td>
       <td>${isOk ? (d.natureBrute || '—') : '—'}</td>
       <td>${isOk ? (d.conditionnement || '—') : '—'}</td>
       <td>${isOk ? (d.rayon || '—') : '—'}</td>
