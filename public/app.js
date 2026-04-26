@@ -101,7 +101,11 @@ const FIELD_LABELS = {
   glucides:             'Glucides (fr_FR)',
   sucres:               'dont sucres (fr_FR)',
   proteines:            'Protéines (fr_FR)',
+  fibres:               'Fibres alimentaires (fr_FR)',
+  sodium:               'Sodium (fr_FR)',
   sel:                  'Sel',
+  uniteEnergetique:     'Unité énergétique (fr_FR)',
+  poids:                'Poids (auto → Info bandeau + Palier)',
   conservation:         'Conservation',
   nomLatin:             'Nom latin',
   facettePecheElevage:  'Facette Pêche / Élevage',
@@ -451,11 +455,14 @@ function getFormData() {
     flagFQC:             checked('flagFQC'),
     allergens,
     valeursEnergetiques: val('valeursEnergetiques'),
+    uniteEnergetique:    val('uniteEnergetique'),
     graisses:            val('graisses'),
     grasSatures:         val('grasSatures'),
     glucides:            val('glucides'),
     sucres:              val('sucres'),
     proteines:           val('proteines'),
+    fibres:              val('fibres'),
+    sodium:              val('sodium'),
     sel:                 val('sel'),
   };
 
@@ -629,7 +636,8 @@ function updateButtons() {
 // ─── Reset formulaire ─────────────────────────────────────────────────────────
 function resetForm(keepRayon=true) {
   ['ean','natureBrute','attribut','marque','conditionnement','infoBandeau','palierCommande',
-   'valeursEnergetiques','graisses','grasSatures','glucides','sucres','proteines','sel'].forEach(id => {
+   'valeursEnergetiques','uniteEnergetique','graisses','grasSatures','glucides','sucres',
+   'proteines','fibres','sodium','sel'].forEach(id => {
     const el = document.getElementById(id); if(el) el.value='';
   });
   ['poidsVariable','flagBio','flagFQC'].forEach(id => { const el=document.getElementById(id); if(el) el.checked=false; });
@@ -1272,12 +1280,15 @@ const SI_FIELD_LABELS = {
   flagFQC:           { label: 'Flag FQC',               group: 'commercial' },
   conservation:      { label: 'Conservation',           group: 'commercial' },
   ingredients:       { label: 'Ingrédients',            group: 'composition' },
+  uniteEnergetique:   { label: 'Unité énergétique',     group: 'nutrition' },
   valeursEnergetiques:{ label: 'Valeur énergétique',   group: 'nutrition' },
   graisses:          { label: 'Matières grasses',       group: 'nutrition' },
   grasSatures:       { label: 'dont acides gras sat.',  group: 'nutrition' },
   glucides:          { label: 'Glucides',               group: 'nutrition' },
   sucres:            { label: 'dont sucres',            group: 'nutrition' },
   proteines:         { label: 'Protéines',              group: 'nutrition' },
+  fibres:            { label: 'Fibres alimentaires',    group: 'nutrition' },
+  sodium:            { label: 'Sodium',                 group: 'nutrition' },
   sel:               { label: 'Sel',                    group: 'nutrition' },
   nomLatin:          { label: 'Nom latin',              group: 'specifique' },
   facettePecheElevage:{ label: 'Pêche / Élevage',      group: 'specifique' },
@@ -2179,7 +2190,7 @@ function handleBatchFiles(fileList) {
   if (remaining <= 0) { toast('Limite de 500 images déjà atteinte', 'error'); return; }
   if (files.length > remaining) toast(`Limite : ${MAX} images max — ${files.length - remaining} image(s) ignorée(s)`, '');
 
-  files.slice(0, remaining).forEach((file, i) => {
+  files.slice(0, remaining).forEach((file) => {
     batchFiles.push({
       id:              batchFiles.length,
       file,
