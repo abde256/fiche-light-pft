@@ -386,7 +386,7 @@ app.get('/api/smart-import-status', (_req, res) => {
 
 // ─── Route : Smart Import (image + PDF → Gemini Vision) ──────────────────────
 app.post('/api/smart-import', async (req, res) => {
-  if (!gemini) {
+  if (!GEMINI_API_KEY) {
     return res.status(503).json({
       error: 'Clé API Gemini non configurée.',
       hint: 'Ajoutez GEMINI_API_KEY=... dans vos variables d\'environnement et redémarrez. Clé gratuite sur aistudio.google.com'
