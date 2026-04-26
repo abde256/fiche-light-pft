@@ -214,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('changeFileBtn').addEventListener('click', resetImport);
   document.getElementById('doImportBtn').addEventListener('click', doImport);
+  document.getElementById('doExportDirectBtn').addEventListener('click', doExportDirect);
 
   // ── Import intelligent ──
   initImportSubtabs();
@@ -1057,6 +1058,51 @@ function doImport() {
   toast(`${count} produit(s) importé(s) dans le lot !`,'success');
   resetImport();
   switchTab('manual');
+}
+
+async function doExportDirect() {
+  if (!importedRows.length) return;
+
+  // Lire le mapping courant
+  document.querySelectorAll('.mapping-select').forEach(sel => {
+    columnMapping[sel.dataset.col] = sel.value;
+  });
+
+  const hasEan    = Object.values(columnMapping).includes('ean');
+  const hasNature = Object.values(columnMapping).includes('natureBrute');
+  if (!hasEan && !hasNature) {
+    toast('Mappez au moins le champ EAN ou Nature brute avant d\'exporter', 'error'); return;
+  }
+
+  const rows = importedRows
+    .map(row => buildProductFromRow(row, columnMapping))
+    .filter(p => p.ean || p.natureBrute);
+
+  if (!rows.length) { toast('Aucune ligne valide à exporter', 'error'); return; }
+
+  const btn = document.getElementById('doExportDirectBtn');
+  btn.disabled = true; btn.textContent = '⏳ Génération…';
+
+  try {
+    const resp = await fetch('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ products: rows }),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `fiche-light-${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`${rows.length} fiche(s) exportée(s) en Excel`, 'success');
+  } catch (err) {
+    toast('Erreur export : ' + err.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '⬇ Exporter en Excel';
+  }
 }
 
 function buildProductFromRow(row, mapping) {
