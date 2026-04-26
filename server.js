@@ -33,8 +33,18 @@ async function callGemini(fileBase64, mimeType, prompt) {
     throw new Error(`Gemini API ${resp.status}: ${err.slice(0, 400)}`);
   }
   const data = await resp.json();
+  console.log('Gemini raw response:', JSON.stringify(data).slice(0, 800));
+
+  const candidate = data.candidates?.[0];
+  if (!candidate) throw new Error(`Gemini: aucun candidat — ${JSON.stringify(data).slice(0, 300)}`);
+  if (candidate.finishReason && candidate.finishReason !== 'STOP')
+    throw new Error(`Gemini bloqué (${candidate.finishReason})`);
+
+  const text = candidate.content?.parts?.[0]?.text;
+  if (!text) throw new Error(`Gemini: réponse vide — ${JSON.stringify(data).slice(0, 300)}`);
+
   return {
-    text:   data.candidates[0].content.parts[0].text,
+    text,
     tokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.candidatesTokenCount || 0),
   };
 }
