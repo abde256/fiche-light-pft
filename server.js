@@ -9,7 +9,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 // ─── Client Gemini (Smart Import) ─────────────────────────────────────────────
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 const genai  = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
-const gemini = genai ? genai.getGenerativeModel({ model: 'gemini-2.0-flash' }) : null;
+const gemini = genai ? genai.getGenerativeModel({ model: 'gemini-1.5-flash' }) : null;
 if (GEMINI_API_KEY) {
   console.log('\n🧠  Gemini 2.0 Flash activé — import intelligent image/PDF disponible\n');
 }
