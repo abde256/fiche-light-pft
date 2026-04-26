@@ -642,18 +642,6 @@ function resetForm(keepRayon=true) {
 // CONTRÔLE QUALITÉ PRÉ-EXPORT
 // ═════════════════════════════════════════════════════════════════════════════
 
-// Vérifie le checksum Luhn d'un EAN-8/13
-function luhnValid(num) {
-  const d = String(num).replace(/\D/g, '');
-  if (d.length < 8) return false;
-  let sum = 0;
-  for (let i = 0; i < d.length; i++) {
-    let n = parseInt(d[d.length - 1 - i]);
-    if (i % 2 === 1) { n *= 2; if (n > 9) n -= 9; }
-    sum += n;
-  }
-  return sum % 10 === 0;
-}
 
 // Extrait le poids en kg depuis un texte libre
 function extractKgFromText(text) {
@@ -694,11 +682,9 @@ function auditProduct(p, idx) {
   if (!p.natureBrute)   errors.push('Nature brute manquante');
   if (!p.conditionnement) errors.push('Conditionnement manquant');
 
-  // ── EAN : format + Luhn ────────────────────────────────────────────────────
-  if (p.ean) {
-    if (!/^\d{8,13}$/.test(p.ean))  errors.push(`EAN invalide : "${p.ean}" (doit être 8 à 13 chiffres)`);
-    else if (!luhnValid(p.ean))      errors.push(`EAN "${p.ean}" : checksum Luhn incorrect`);
-  }
+  // ── EAN : format uniquement ────────────────────────────────────────────────
+  if (p.ean && !/^\d{8,13}$/.test(p.ean))
+    errors.push(`EAN invalide : "${p.ean}" (doit être 8 à 13 chiffres)`);
 
   // ── Palier cohérent avec le poids du conditionnement ────────────────────────
   if (p.palierCommande && p.conditionnement) {
