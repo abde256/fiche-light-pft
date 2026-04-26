@@ -4,13 +4,14 @@ const XLSX         = require('xlsx');
 const path         = require('path');
 const fs           = require('fs');
 const { Blob }     = require('buffer');
-const Anthropic    = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// ─── Client Claude (Smart Import) ─────────────────────────────────────────────
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
-const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
-if (ANTHROPIC_API_KEY) {
-  console.log('\n🧠  Claude Vision activé — import intelligent image/PDF disponible\n');
+// ─── Client Gemini (Smart Import) ─────────────────────────────────────────────
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
+const genai  = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+const gemini = genai ? genai.getGenerativeModel({ model: 'gemini-2.0-flash' }) : null;
+if (GEMINI_API_KEY) {
+  console.log('\n🧠  Gemini 2.0 Flash activé — import intelligent image/PDF disponible\n');
 }
 
 let sharp;
@@ -345,15 +346,15 @@ Règles métier Carrefour obligatoires:
 
 // ─── Route : Statut Smart Import ──────────────────────────────────────────────
 app.get('/api/smart-import-status', (_req, res) => {
-  res.json({ available: !!anthropic, configured: !!ANTHROPIC_API_KEY });
+  res.json({ available: !!gemini, configured: !!GEMINI_API_KEY });
 });
 
-// ─── Route : Smart Import (image + PDF → Claude Vision) ──────────────────────
+// ─── Route : Smart Import (image + PDF → Gemini Vision) ──────────────────────
 app.post('/api/smart-import', async (req, res) => {
-  if (!anthropic) {
+  if (!gemini) {
     return res.status(503).json({
-      error: 'Clé API Anthropic non configurée.',
-      hint: 'Ajoutez ANTHROPIC_API_KEY=sk-ant-... dans vos variables d\'environnement et redémarrez.'
+      error: 'Clé API Gemini non configurée.',
+      hint: 'Ajoutez GEMINI_API_KEY=... dans vos variables d\'environnement et redémarrez. Clé gratuite sur aistudio.google.com'
     });
   }
 
@@ -368,41 +369,29 @@ app.post('/api/smart-import', async (req, res) => {
   }
 
   try {
-    // Construire le contenu selon le type de fichier
-    const content = isPDF
-      ? [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 } },
-          { type: 'text', text: SMART_IMPORT_PROMPT }
-        ]
-      : [
-          { type: 'image', source: { type: 'base64', media_type: mimeType, data: fileBase64 } },
-          { type: 'text', text: SMART_IMPORT_PROMPT }
-        ];
+    const result = await gemini.generateContent([
+      { inlineData: { data: fileBase64, mimeType } },
+      SMART_IMPORT_PROMPT,
+    ]);
 
-    const message = await anthropic.messages.create({
-      model:      'claude-haiku-4-5-20251001', // rapide + économique : ~$0.001/image
-      max_tokens: 2000,
-      messages:   [{ role: 'user', content }],
-    });
+    const raw = result.response.text().trim();
 
-    const raw = message.content[0].text.trim();
-
-    // Extraire le JSON même si Claude ajoute du texte autour
+    // Extraire le JSON même si Gemini ajoute du texte autour
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('Réponse IA non parsable — réessayez ou vérifiez le fichier');
 
     const data = JSON.parse(jsonMatch[0]);
 
-    // Compter les champs extraits (non-null) pour le résumé
     const fields = ['ean','natureBrute','attribut','marque','conditionnement','infoBandeau',
                     'palierCommande','conservation','ingredients','valeursEnergetiques'];
-    const filled  = fields.filter(f => data[f] != null).length;
+    const filled = fields.filter(f => data[f] != null).length;
 
+    const usage = result.response.usageMetadata || {};
     res.json({
       extracted:   data,
       filledCount: filled,
       totalFields: fields.length,
-      tokens:      message.usage.input_tokens + message.usage.output_tokens,
+      tokens:      (usage.promptTokenCount || 0) + (usage.candidatesTokenCount || 0),
     });
 
   } catch (err) {
