@@ -754,6 +754,12 @@ body {
 .mapping-table tr:hover td { background: var(--g1); }
 
 .source-col { font-size: 12px; font-weight: 600; color: var(--g8); white-space: nowrap; }
+
+/* Badges de confiance mapping */
+.import-conf-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px; margin-left: 6px; vertical-align: middle; white-space: nowrap; }
+.badge-conf-exact   { background: #d1fae5; color: #065f46; }
+.badge-conf-partial { background: #fef3c7; color: #92400e; }
+.badge-conf-value   { background: #ede9fe; color: #5b21b6; }
 .sample-val { font-size: 11px; color: var(--g5); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
 
 .mapping-select {

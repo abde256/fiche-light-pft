@@ -37,43 +37,43 @@ const CONSERVATION_OPTIONS = [
 
 // ─── Mapping d'import : variations de noms de colonnes → champ interne ────────
 const IMPORT_FIELD_ALIASES = {
-  ean:                  ['ean','code ean','code-barres','code barre','barcode','gtin','upc','code article'],
-  natureBrute:          ['nature brute','naturebrute','libelle bcp','libellé bcp','libellé','libelle','nom produit','nom'],
-  attribut:             ['attribut','attribute','specificite','spécificité','sous libelle'],
-  marque:               ['marque','marque produit','brand','fabricant','marque fournisseur'],
-  rayon:                ['rayon','rayon code','departement','département','famille','code rayon','r20','r21','r22','r23','r24'],
-  conditionnement:      ['conditionnement','packaging'],
-  infoBandeau:          ['info bandeau','info_bandeau','bandeau'],
-  palierCommande:       ['palier de commande','palier commande','palier'],
-  flagBio:              ['flag bio','bio','biologique'],
-  flagFQC:              ['flag fqc','fqc'],
-  ingredients:          ['ingrédients','ingredients','ingredient','composition'],
-  valeursEnergetiques:  ['valeur energetique','valeur énergétique','energie','énergie','calories','kcal'],
-  graisses:             ['matieres grasses','matières grasses','graisses','lipides'],
-  grasSatures:          ['acides gras satures','acides gras saturés','graisses saturees','gras saturés'],
-  glucides:             ['glucides','glucide'],
-  sucres:               ['dont sucres','sucres'],
-  proteines:            ['proteines','protéines'],
-  sel:                  ['sel','sodium'],
-  conservation:         ['conservation','conditions de conservation'],
-  nomLatin:             ['nom latin','latin','nom scientifique'],
-  facettePecheElevage:  ['peche elevage','pêche elevage','peche','elevage'],
-  categorie:            ['categorie','catégorie','category'],
-  viandeBovine:         ['viande bovine francaise','viande bovine française','viande bovine'],
+  ean:                  ['ean','code ean','code-barres','code barre','barcode','gtin','upc','code article','reference','réference','ref','code produit','id produit','identifiant'],
+  natureBrute:          ['nature brute','naturebrute','libelle bcp','libellé bcp','libellé','libelle','nom produit','nom','denomination','dénomination','designation','désignation','description produit','description','libelle court','libellé court','libelle commercial','libellé commercial','intitule','intitulé','produit'],
+  attribut:             ['attribut','attribute','specificite','spécificité','sous libelle','sous-libelle','complement','complément','variete','variété','detail','détail'],
+  marque:               ['marque','marque produit','brand','fabricant','marque fournisseur','enseigne','fournisseur'],
+  rayon:                ['rayon','rayon code','departement','département','famille','code rayon','section','univers'],
+  conditionnement:      ['conditionnement','packaging','unite de vente','unité de vente','ucv','format','presentation','présentation'],
+  infoBandeau:          ['info bandeau','info_bandeau','bandeau','quantite nette','quantité nette','poids net consommateur','contenu net','volume net'],
+  palierCommande:       ['palier de commande','palier commande','palier','poids moyen','poids unitaire'],
+  poids:                ['poids','poids brut','poids net','grammage','masse','weight','grammes','masse nette','poids piece','poids pièce','poids en g','poids (g)','poids(g)'],
+  flagBio:              ['flag bio','bio','biologique','agriculture biologique','ab'],
+  flagFQC:              ['flag fqc','fqc','filiere qualite','filière qualité','filiere qualite carrefour'],
+  ingredients:          ['ingrédients','ingredients','ingredient','ingrédient','composition','liste ingredients','liste des ingrédients','formule'],
+  valeursEnergetiques:  ['valeur energetique','valeur énergétique','energie','énergie','calories','kcal','kj','energie kcal','valeur calorique'],
+  graisses:             ['matieres grasses','matières grasses','graisses','lipides','fat','mg'],
+  grasSatures:          ['acides gras satures','acides gras saturés','graisses saturees','gras saturés','saturés','ags'],
+  glucides:             ['glucides','glucide','carbohydrates','sucres totaux','glucides totaux'],
+  sucres:               ['dont sucres','sucres','sucre'],
+  proteines:            ['proteines','protéines','proteine','protéine','protein'],
+  sel:                  ['sel','sodium','sel equivalent','sel équivalent'],
+  conservation:         ['conservation','conditions de conservation','temperature conservation','modalites conservation','modalités de conservation'],
+  nomLatin:             ['nom latin','latin','nom scientifique','denomination scientifique','dénomination scientifique','espece','espèce'],
+  facettePecheElevage:  ['peche elevage','pêche elevage','peche','elevage','methode production','méthode de production','mode de production'],
+  categorie:            ['categorie','catégorie','category','classe','calibre'],
+  viandeBovine:         ['viande bovine francaise','viande bovine française','viande bovine','boeuf francais','boeuf français','vbf'],
   porcFrancais:         ['porc francais','porc français'],
-  // Allergènes individuels
-  'al.gluten':          ['gluten'],
-  'al.lait':            ['lait','lactose'],
-  'al.soja':            ['soja'],
-  'al.arachides':       ['arachides','arachide','arachides (cacahuetes)'],
+  'al.gluten':          ['gluten','ble','blé','froment','orge','seigle','avoine','epeautre','kamut'],
+  'al.lait':            ['lait','lactose','produits laitiers','lait (lactose)'],
+  'al.soja':            ['soja','soya'],
+  'al.arachides':       ['arachides','arachide','cacahuetes','cacahuètes','arachides (cacahuetes)'],
   'al.celeri':          ['celeri','céleri'],
-  'al.oeufs':           ['oeufs','oeuf'],
-  'al.crustaces':       ['crustacés','crustaces'],
-  'al.poisson':         ['poisson'],
-  'al.fruitsACoque':    ['fruits a coque','fruits à coque','noix','fruits coque'],
+  'al.oeufs':           ['oeufs','oeuf','egg'],
+  'al.crustaces':       ['crustacés','crustaces','crustace'],
+  'al.poisson':         ['poisson','fish'],
+  'al.fruitsACoque':    ['fruits a coque','fruits à coque','noix','amandes','noisettes','noix de cajou','fruits coque'],
   'al.moutarde':        ['moutarde'],
-  'al.sesame':          ['sesame','sésame'],
-  'al.sulfites':        ['sulfites','sulfite','anhydride sulfureux'],
+  'al.sesame':          ['sesame','sésame','graines de sesame'],
+  'al.sulfites':        ['sulfites','sulfite','anhydride sulfureux','so2'],
   'al.lupin':           ['lupin'],
   'al.mollusques':      ['mollusques'],
 };
@@ -874,7 +874,7 @@ function handleFile(file) {
 
 function showMappingUI(fileName, data) {
   importedRows = data.rows;
-  columnMapping = autoDetectMapping(data.headers);
+  columnMapping = autoDetectMapping(data.headers, data.rows);
 
   document.getElementById('uploadZone').style.display   = 'none';
   document.getElementById('mappingSection').style.display = 'block';
@@ -885,12 +885,21 @@ function showMappingUI(fileName, data) {
   // Table de mapping
   const tbody = document.getElementById('mappingTableBody');
   tbody.innerHTML = '';
+  const conf = window._importConfidence || {};
+  const CONF_LABELS = {
+    exact:   { text: '✓ Exact',   cls: 'badge-conf-exact'   },
+    partial: { text: '~ Proche',  cls: 'badge-conf-partial' },
+    value:   { text: '⚡ Valeurs', cls: 'badge-conf-value'  },
+  };
+
   data.headers.forEach(header => {
-    const mapped = columnMapping[header] || '';
-    const sample = data.preview[0] ? String(data.preview[0][header] || '').slice(0, 60) : '';
+    const mapped   = columnMapping[header] || '';
+    const sample   = data.preview[0] ? String(data.preview[0][header] || '').slice(0, 60) : '';
+    const confInfo = mapped && conf[header] ? CONF_LABELS[conf[header]] : null;
+    const badge    = confInfo ? `<span class="import-conf-badge ${confInfo.cls}">${confInfo.text}</span>` : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="source-col">${header}</span></td>
+      <td><span class="source-col">${header}</span>${badge}</td>
       <td>${buildMappingSelect(header, mapped)}</td>
       <td><span class="sample-val" title="${sample}">${sample || '—'}</span></td>`;
     tbody.appendChild(tr);
@@ -904,6 +913,11 @@ function showMappingUI(fileName, data) {
       sel.classList.toggle('mapped', !!sel.value);
     });
   });
+
+  // Résumé du mapping
+  const mappedCount = Object.values(columnMapping).filter(Boolean).length;
+  document.getElementById('importActionInfo').textContent =
+    `${data.totalRows} produit(s) · ${mappedCount} colonne(s) détectée(s) sur ${data.headers.length}`;
 
   // Preview table
   buildPreviewTable(data.headers, data.preview);
@@ -923,18 +937,95 @@ function buildPreviewTable(headers, rows) {
   table.innerHTML = thead + tbody;
 }
 
-function autoDetectMapping(headers) {
-  const mapping = {};
+function autoDetectMapping(headers, rows = []) {
+  const mapping    = {};
+  const confidence = {}; // 'name' | 'value' | 'guess'
+  const used       = new Set();
+
+  // ── PASSE 1 : correspondance exacte sur le nom de colonne ──────────────────
   headers.forEach(header => {
     const norm = normalizeStr(header);
     for (const [field, aliases] of Object.entries(IMPORT_FIELD_ALIASES)) {
-      if (aliases.some(a => normalizeStr(a) === norm || norm.includes(normalizeStr(a)))) {
-        mapping[header] = field;
-        break;
+      if (used.has(field)) continue;
+      if (aliases.some(a => normalizeStr(a) === norm)) {
+        mapping[header]    = field;
+        confidence[header] = 'exact';
+        used.add(field);
+        return;
       }
     }
   });
+
+  // ── PASSE 2 : correspondance partielle sur le nom ───────────────────────────
+  headers.forEach(header => {
+    if (mapping[header]) return;
+    const norm = normalizeStr(header);
+    for (const [field, aliases] of Object.entries(IMPORT_FIELD_ALIASES)) {
+      if (used.has(field)) continue;
+      if (aliases.some(a => norm.includes(normalizeStr(a)) || normalizeStr(a).includes(norm))) {
+        mapping[header]    = field;
+        confidence[header] = 'partial';
+        used.add(field);
+        return;
+      }
+    }
+  });
+
+  // ── PASSE 3 : inférence par analyse des valeurs ────────────────────────────
+  if (rows.length) {
+    headers.forEach(header => {
+      if (mapping[header]) return;
+      const values = rows.map(r => String(r[header] || '').trim()).filter(Boolean);
+      if (!values.length) return;
+      const inferred = inferFieldFromValues(values, used);
+      if (inferred) {
+        mapping[header]    = inferred;
+        confidence[header] = 'value';
+        used.add(inferred);
+      }
+    });
+  }
+
+  // Stocker la confiance pour affichage dans l'UI
+  window._importConfidence = confidence;
   return mapping;
+}
+
+// Analyse les valeurs d'une colonne pour deviner le champ cible
+function inferFieldFromValues(values, usedFields) {
+  const sample = values.slice(0, 20);
+  const total  = sample.length;
+
+  const pct = fn => sample.filter(fn).length / total;
+
+  // EAN : 8 ou 13 chiffres
+  if (!usedFields.has('ean') && pct(v => /^\d{8}$|^\d{13}$/.test(v.replace(/\s/g,''))) > 0.7)
+    return 'ean';
+
+  // Poids : valeurs avec unité gramme/kg
+  if (!usedFields.has('poids') && pct(v => /^\d+([.,]\d+)?\s*(g|kg|gr|grammes?)\b/i.test(v)) > 0.5)
+    return 'poids';
+
+  // Palier : format X.XXX décimales
+  if (!usedFields.has('palierCommande') && pct(v => /^\d+\.\d{3}$/.test(v)) > 0.5)
+    return 'palierCommande';
+
+  // Valeurs booléennes → skip (trop ambigu sans nom)
+
+  // Énergie : valeurs contenant kcal ou kJ
+  if (!usedFields.has('valeursEnergetiques') && pct(v => /kcal|kj/i.test(v)) > 0.5)
+    return 'valeursEnergetiques';
+
+  // Ingrédients : longues chaînes avec virgules (>80 chars en moyenne)
+  const avgLen = sample.reduce((s, v) => s + v.length, 0) / total;
+  if (!usedFields.has('ingredients') && avgLen > 80 && pct(v => v.includes(',')) > 0.5)
+    return 'ingredients';
+
+  // Nature brute : chaînes courtes sans chiffres, probablement un nom
+  if (!usedFields.has('natureBrute') && avgLen < 40 && pct(v => /^[a-zA-ZÀ-ÿ\s\-']+$/.test(v)) > 0.7)
+    return 'natureBrute';
+
+  return null;
 }
 
 function normalizeStr(s) {
@@ -977,9 +1068,23 @@ function buildProductFromRow(row, mapping) {
 
   // Rayon : essayer de détecter depuis la valeur ou la colonne
   let rayon = get('rayon').toUpperCase();
-  if (!['R20','R21','R22','R23','R24'].includes(rayon)) {
-    // Essayer de déduire depuis d'autres colonnes
-    rayon = currentRayon || 'R20';
+  if (!['R20','R21','R22','R23','R24'].includes(rayon)) rayon = currentRayon || 'R20';
+
+  // ── Poids intelligent : infoBandeau + palierCommande auto ─────────────────
+  let infoBandeau   = get('infoBandeau');
+  let palierCommande = get('palierCommande');
+
+  const poidsRaw = get('poids');
+  if (poidsRaw) {
+    const kg = parsePoids(poidsRaw);
+    if (kg !== null) {
+      // infoBandeau : format humain (ex. "200g", "1.5kg")
+      if (!infoBandeau) infoBandeau = kg >= 1 ? `${kg}kg` : `${Math.round(kg * 1000)}g`;
+      // palierCommande : toujours 3 décimales
+      if (!palierCommande) palierCommande = kg.toFixed(3);
+    } else if (!infoBandeau) {
+      infoBandeau = poidsRaw;
+    }
   }
 
   // Allergènes
@@ -996,8 +1101,8 @@ function buildProductFromRow(row, mapping) {
     attribut:             get('attribut'),
     marque:               get('marque'),
     conditionnement:      get('conditionnement'),
-    infoBandeau:          get('infoBandeau'),
-    palierCommande:       get('palierCommande'),
+    infoBandeau,
+    palierCommande,
     flagBio:              getBool('flagBio'),
     flagFQC:              getBool('flagFQC'),
     allergens,
@@ -1022,6 +1127,19 @@ function parseBool(v) {
   if (typeof v === 'boolean') return v;
   if (typeof v === 'number')  return v !== 0;
   return ['true','vrai','oui','yes','1','x','TRUE','OUI'].includes(String(v).trim());
+}
+
+// Convertit une valeur poids textuelle en kg (nombre)
+// Ex: "200g" → 0.2 | "1.5kg" → 1.5 | "500" → 0.5 (suppose grammes si <10)
+function parsePoids(raw) {
+  const s = String(raw).replace(',','.').trim();
+  const kgMatch = s.match(/^(\d+(?:\.\d+)?)\s*kg/i);
+  if (kgMatch) return parseFloat(kgMatch[1]);
+  const gMatch  = s.match(/^(\d+(?:\.\d+)?)\s*g(?:r(?:ammes?)?)?\b/i);
+  if (gMatch)  return parseFloat(gMatch[1]) / 1000;
+  const num = parseFloat(s);
+  if (!isNaN(num)) return num < 10 ? num : num / 1000; // <10 → kg, sinon grammes
+  return null;
 }
 
 function resetImport() {
