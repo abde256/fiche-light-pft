@@ -8,11 +8,64 @@ const { Blob }     = require('buffer');
 // ─── Client Gemini (Smart Import — REST natif, sans SDK) ──────────────────────
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 if (GEMINI_API_KEY) {
-  console.log('\n🧠  Gemini 1.5 Flash activé — import intelligent image/PDF disponible\n');
+  console.log('\n🧠  Gemini activé — import intelligent image/PDF disponible\n');
+}
+
+// Modèles par ordre de préférence (fallback automatique si 503)
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+
+async function callGeminiModel(model, bodyObj) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bodyObj),
+    signal: AbortSignal.timeout(35000),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    const error = new Error(`Gemini API ${resp.status}: ${err.slice(0, 400)}`);
+    error.status = resp.status;
+    throw error;
+  }
+  return resp.json();
+}
+
+async function callGeminiWithFallback(bodyObj) {
+  let lastError;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const data = await callGeminiModel(model, bodyObj);
+      if (model !== GEMINI_MODELS[0]) console.log(`  ℹ️  Fallback utilisé : ${model}`);
+
+      const candidate = data.candidates?.[0];
+      if (!candidate) throw new Error(`Gemini: aucun candidat — ${JSON.stringify(data).slice(0, 300)}`);
+      if (candidate.finishReason && candidate.finishReason !== 'STOP')
+        throw new Error(`Gemini bloqué (${candidate.finishReason})`);
+
+      const text = candidate.content?.parts?.[0]?.text;
+      if (!text) throw new Error(`Gemini: réponse vide — ${JSON.stringify(data).slice(0, 300)}`);
+
+      return {
+        text,
+        tokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.candidatesTokenCount || 0),
+        model,
+      };
+    } catch (err) {
+      lastError = err;
+      // 503 = saturé, 429 = quota → essayer le modèle suivant après 1s
+      if (err.status === 503 || err.status === 429) {
+        console.warn(`  ⚠️  ${model} indisponible (${err.status}) — essai du modèle suivant…`);
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      throw err; // Autre erreur (401, 400…) → on ne tente pas le fallback
+    }
+  }
+  throw lastError;
 }
 
 async function callGemini(fileBase64, mimeType, prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   const body = {
     contents: [{
       parts: [
@@ -22,31 +75,7 @@ async function callGemini(fileBase64, mimeType, prompt) {
     }],
     generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
   };
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Gemini API ${resp.status}: ${err.slice(0, 400)}`);
-  }
-  const data = await resp.json();
-  console.log('Gemini raw response:', JSON.stringify(data).slice(0, 800));
-
-  const candidate = data.candidates?.[0];
-  if (!candidate) throw new Error(`Gemini: aucun candidat — ${JSON.stringify(data).slice(0, 300)}`);
-  if (candidate.finishReason && candidate.finishReason !== 'STOP')
-    throw new Error(`Gemini bloqué (${candidate.finishReason})`);
-
-  const text = candidate.content?.parts?.[0]?.text;
-  if (!text) throw new Error(`Gemini: réponse vide — ${JSON.stringify(data).slice(0, 300)}`);
-
-  return {
-    text,
-    tokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.candidatesTokenCount || 0),
-  };
+  return callGeminiWithFallback(body);
 }
 
 let sharp;
@@ -380,26 +409,13 @@ app.get('/api/smart-import-status', (_req, res) => {
   res.json({ available: !!GEMINI_API_KEY, configured: !!GEMINI_API_KEY });
 });
 
-// ─── Appel Gemini texte seul (sans image) ─────────────────────────────────────
+// ─── Appel Gemini texte seul (sans image) — avec fallback automatique ────────
 async function callGeminiText(prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
   };
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Gemini API ${resp.status}: ${err.slice(0, 300)}`);
-  }
-  const data = await resp.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error(`Gemini: réponse vide — ${JSON.stringify(data).slice(0, 200)}`);
+  const { text } = await callGeminiWithFallback(body);
   return text;
 }
 
