@@ -4,14 +4,39 @@ const XLSX         = require('xlsx');
 const path         = require('path');
 const fs           = require('fs');
 const { Blob }     = require('buffer');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// ─── Client Gemini (Smart Import) ─────────────────────────────────────────────
+// ─── Client Gemini (Smart Import — REST natif, sans SDK) ──────────────────────
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
-const genai  = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
-const gemini = genai ? genai.getGenerativeModel({ model: 'gemini-1.5-flash-latest' }) : null;
 if (GEMINI_API_KEY) {
-  console.log('\n🧠  Gemini 2.0 Flash activé — import intelligent image/PDF disponible\n');
+  console.log('\n🧠  Gemini 1.5 Flash activé — import intelligent image/PDF disponible\n');
+}
+
+async function callGemini(fileBase64, mimeType, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const body = {
+    contents: [{
+      parts: [
+        { inline_data: { mime_type: mimeType, data: fileBase64 } },
+        { text: prompt },
+      ],
+    }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
+  };
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Gemini API ${resp.status}: ${err.slice(0, 400)}`);
+  }
+  const data = await resp.json();
+  return {
+    text:   data.candidates[0].content.parts[0].text,
+    tokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.candidatesTokenCount || 0),
+  };
 }
 
 let sharp;
@@ -346,7 +371,7 @@ Règles métier Carrefour obligatoires:
 
 // ─── Route : Statut Smart Import ──────────────────────────────────────────────
 app.get('/api/smart-import-status', (_req, res) => {
-  res.json({ available: !!gemini, configured: !!GEMINI_API_KEY });
+  res.json({ available: !!GEMINI_API_KEY, configured: !!GEMINI_API_KEY });
 });
 
 // ─── Route : Smart Import (image + PDF → Gemini Vision) ──────────────────────
@@ -369,15 +394,9 @@ app.post('/api/smart-import', async (req, res) => {
   }
 
   try {
-    const result = await gemini.generateContent([
-      { inlineData: { data: fileBase64, mimeType } },
-      SMART_IMPORT_PROMPT,
-    ]);
+    const { text, tokens } = await callGemini(fileBase64, mimeType, SMART_IMPORT_PROMPT);
 
-    const raw = result.response.text().trim();
-
-    // Extraire le JSON même si Gemini ajoute du texte autour
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.trim().match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('Réponse IA non parsable — réessayez ou vérifiez le fichier');
 
     const data = JSON.parse(jsonMatch[0]);
@@ -386,13 +405,7 @@ app.post('/api/smart-import', async (req, res) => {
                     'palierCommande','conservation','ingredients','valeursEnergetiques'];
     const filled = fields.filter(f => data[f] != null).length;
 
-    const usage = result.response.usageMetadata || {};
-    res.json({
-      extracted:   data,
-      filledCount: filled,
-      totalFields: fields.length,
-      tokens:      (usage.promptTokenCount || 0) + (usage.candidatesTokenCount || 0),
-    });
+    res.json({ extracted: data, filledCount: filled, totalFields: fields.length, tokens });
 
   } catch (err) {
     console.error('Smart import error:', err.message);
