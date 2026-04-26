@@ -227,6 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initImportSubtabs();
   initSmartImport();
 
+  // ── Réécriture libellé IA ──
+  initRewriteFeature();
+
   // ── Visuels ──
   initImageProcessing();
 });
@@ -1474,6 +1477,7 @@ function renderSmartImportResults(data) {
         // Checkbox éditable
         inputEl = document.createElement('select');
         inputEl.className = 'si-field-input si-field-select';
+        inputEl.setAttribute('data-sikey', key);
         inputEl.innerHTML = '<option value="true">✅ TRUE</option><option value="false">⬜ FALSE</option>';
         inputEl.value = value ? 'true' : 'false';
         inputEl.addEventListener('change', () => { siExtracted[key] = inputEl.value === 'true'; });
@@ -1481,6 +1485,7 @@ function renderSmartImportResults(data) {
         // Textarea pour les longs textes
         inputEl = document.createElement('textarea');
         inputEl.className = 'si-field-input si-field-textarea';
+        inputEl.setAttribute('data-sikey', key);
         inputEl.value = String(value);
         inputEl.rows  = 3;
         inputEl.addEventListener('input', () => { siExtracted[key] = inputEl.value; });
@@ -1489,6 +1494,7 @@ function renderSmartImportResults(data) {
         inputEl = document.createElement('input');
         inputEl.type      = 'text';
         inputEl.className = 'si-field-input';
+        inputEl.setAttribute('data-sikey', key);
         inputEl.value     = String(value);
         inputEl.addEventListener('input', () => { siExtracted[key] = inputEl.value; });
       }
@@ -2459,6 +2465,264 @@ async function deleteTpl(rayon) {
     await loadTplStatus();
   } catch (err) {
     toast('Erreur suppression : ' + err.message, 'error');
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RÉÉCRITURE LIBELLÉ AVEC IA
+// ═════════════════════════════════════════════════════════════════════════════
+
+let rewriteAvailable = false;
+
+async function initRewriteFeature() {
+  try {
+    const s = await fetch('/api/smart-import-status').then(r => r.json());
+    rewriteAvailable = !!s.available;
+  } catch (_) { rewriteAvailable = false; }
+
+  if (rewriteAvailable) {
+    // Bouton formulaire manuel
+    const barForm = document.getElementById('rewriteBarForm');
+    if (barForm) barForm.style.display = 'flex';
+
+    // Bouton import Excel
+    const btnImport = document.getElementById('rewriteImportBtn');
+    if (btnImport) btnImport.style.display = 'inline-flex';
+
+    // Bouton smart import résultats
+    const btnSi = document.getElementById('siRewriteBtn');
+    if (btnSi) btnSi.style.display = 'inline-flex';
+  }
+
+  // Wiring événements (qu'on ait Gemini ou non — on affiche une erreur explicite si non dispo)
+  const btnForm = document.getElementById('rewriteFormBtn');
+  if (btnForm) btnForm.addEventListener('click', rewriteFormLibelle);
+
+  const btnImport = document.getElementById('rewriteImportBtn');
+  if (btnImport) btnImport.addEventListener('click', rewriteImportLibelles);
+
+  const btnSi = document.getElementById('siRewriteBtn');
+  if (btnSi) btnSi.addEventListener('click', rewriteSmartImportLibelle);
+}
+
+// ─── Réécriture — formulaire manuel ──────────────────────────────────────────
+
+async function rewriteFormLibelle() {
+  const natureBrute = val('natureBrute');
+  const attribut    = val('attribut');
+  const marque      = val('marque');
+  const libelle     = [natureBrute, attribut, marque].filter(Boolean).join(' ').trim();
+
+  if (!libelle) {
+    toast('Saisissez au moins la nature brute avant de réécrire', 'error'); return;
+  }
+
+  const btn = document.getElementById('rewriteFormBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Réécriture…';
+
+  try {
+    const res  = await fetch('/api/rewrite-libelle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ libelle, rayon: currentRayon || '', idx: 0 }] }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+    const r = data.results && data.results[0];
+    if (!r) throw new Error('Résultat vide');
+
+    const elNature = document.getElementById('natureBrute');
+    const elAttr   = document.getElementById('attribut');
+    const elMarque = document.getElementById('marque');
+
+    if (elNature) elNature.value = r.natureBrute || '';
+    if (elAttr)   elAttr.value   = r.attribut    || '';
+    if (elMarque) elMarque.value = r.marque       || '';
+
+    updateLibellePreview();
+    autoDetectFlags();
+
+    // Afficher le libellé final dans la preview avec highlight
+    const preview = document.getElementById('libellePreview');
+    if (preview && r.libelleFinal) {
+      preview.innerHTML = `<span class="lp-rewritten">${r.libelleFinal}</span>`;
+      setTimeout(() => updateLibellePreview(), 2000);
+    }
+
+    toast('Libellé réécrit par IA ✓', 'success');
+  } catch (err) {
+    toast('Erreur réécriture : ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ Réécrire avec IA';
+  }
+}
+
+// ─── Réécriture — import Excel/CSV en masse ───────────────────────────────────
+
+async function rewriteImportLibelles() {
+  if (!importedRows.length) { toast('Aucun fichier importé', 'error'); return; }
+
+  // Lire le mapping courant depuis les selects
+  document.querySelectorAll('.mapping-select').forEach(sel => {
+    columnMapping[sel.dataset.col] = sel.value;
+  });
+
+  const natureCol = Object.keys(columnMapping).find(k => columnMapping[k] === 'natureBrute');
+  if (!natureCol) {
+    toast('Mappez d\'abord la colonne "Nature brute" avant la réécriture', 'error'); return;
+  }
+  const attrCol   = Object.keys(columnMapping).find(k => columnMapping[k] === 'attribut');
+  const marqueCol = Object.keys(columnMapping).find(k => columnMapping[k] === 'marque');
+  const rayonCol  = Object.keys(columnMapping).find(k => columnMapping[k] === 'rayon');
+
+  // Construire les items à envoyer (un par ligne)
+  const items = importedRows.reduce((acc, row, idx) => {
+    const nature = String(row[natureCol]  || '').trim();
+    if (!nature) return acc;
+    const attr   = attrCol   ? String(row[attrCol]   || '').trim() : '';
+    const marq   = marqueCol ? String(row[marqueCol] || '').trim() : '';
+    const rayon  = rayonCol  ? String(row[rayonCol]  || '').trim() : (currentRayon || '');
+    const libelle = [nature, attr, marq].filter(Boolean).join(' ');
+    acc.push({ libelle, rayon, idx });
+    return acc;
+  }, []);
+
+  if (!items.length) {
+    toast('Aucune valeur de nature brute trouvée dans le fichier', 'error'); return;
+  }
+
+  const btn      = document.getElementById('rewriteImportBtn');
+  const progress = document.getElementById('rewriteImportProgress');
+  const fill     = document.getElementById('rewriteImportFill');
+  const label    = document.getElementById('rewriteImportLabel');
+
+  btn.disabled    = true;
+  btn.textContent = '⏳ Réécriture…';
+  progress.style.display = 'flex';
+  fill.style.width       = '0%';
+  label.textContent      = `0 / ${items.length} libellé(s) traité(s)`;
+
+  const CHUNK = 15;
+  const allResults = [];
+
+  try {
+    for (let i = 0; i < items.length; i += CHUNK) {
+      const chunk = items.slice(i, i + CHUNK);
+      const res   = await fetch('/api/rewrite-libelle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: chunk }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+      allResults.push(...(data.results || []));
+
+      const done = Math.min(i + CHUNK, items.length);
+      fill.style.width  = Math.round((done / items.length) * 100) + '%';
+      label.textContent = `${done} / ${items.length} libellé(s) traité(s)`;
+    }
+
+    // Appliquer les résultats à importedRows
+    // Si les colonnes attribut/marque n'existent pas, on les crée virtuellement
+    const needAttrCol   = !attrCol;
+    const needMarqueCol = !marqueCol;
+    const virtAttrKey   = '__attribut_ia';
+    const virtMarqueKey = '__marque_ia';
+
+    if (needAttrCol) {
+      importedRows.forEach(r => { if (!(virtAttrKey in r)) r[virtAttrKey] = ''; });
+      columnMapping[virtAttrKey] = 'attribut';
+    }
+    if (needMarqueCol) {
+      importedRows.forEach(r => { if (!(virtMarqueKey in r)) r[virtMarqueKey] = ''; });
+      columnMapping[virtMarqueKey] = 'marque';
+    }
+
+    let applied = 0;
+    allResults.forEach(r => {
+      const row = importedRows[r.idx];
+      if (!row) return;
+      if (r.natureBrute !== undefined) { row[natureCol] = r.natureBrute || ''; applied++; }
+      const destAttr   = needAttrCol   ? virtAttrKey   : attrCol;
+      const destMarque = needMarqueCol ? virtMarqueKey : marqueCol;
+      if (destAttr   && r.attribut !== undefined) row[destAttr]   = r.attribut   || '';
+      if (destMarque && r.marque   !== undefined) row[destMarque] = r.marque     || '';
+    });
+
+    // Rafraîchir l'aperçu du tableau
+    const headers    = Object.keys(importedRows[0] || {}).filter(h => !h.startsWith('__'));
+    const previewRows = importedRows.slice(0, 3);
+    buildPreviewTable(headers, previewRows);
+
+    // Mettre à jour le résumé du mapping
+    const mappedCount = Object.values(columnMapping).filter(Boolean).length;
+    document.getElementById('importActionInfo').textContent =
+      `${importedRows.length} produit(s) · ${applied} libellé(s) réécrit(s) par IA ✓`;
+
+    toast(`${applied} libellé(s) corrigé(s) avec succès !`, 'success');
+  } catch (err) {
+    toast('Erreur réécriture : ' + err.message, 'error');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '✨ Réécrire les libellés';
+    setTimeout(() => { progress.style.display = 'none'; }, 2000);
+  }
+}
+
+// ─── Réécriture — Smart Import IA (résultats image/PDF) ──────────────────────
+
+async function rewriteSmartImportLibelle() {
+  if (!siExtracted) { toast('Aucune donnée extraite', 'error'); return; }
+
+  const d       = siExtracted;
+  const libelle = [d.natureBrute, d.attribut, d.marque].filter(Boolean).join(' ').trim();
+  if (!libelle) { toast('Aucun libellé à réécrire dans les données extraites', 'error'); return; }
+
+  const btn = document.getElementById('siRewriteBtn');
+  btn.disabled    = true;
+  btn.textContent = '⏳…';
+
+  try {
+    const res  = await fetch('/api/rewrite-libelle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ libelle, rayon: d.rayon || '', idx: 0 }] }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+
+    const r = data.results && data.results[0];
+    if (!r) throw new Error('Résultat vide');
+
+    // Mettre à jour siExtracted
+    if (r.natureBrute !== undefined) siExtracted.natureBrute = r.natureBrute || '';
+    if (r.attribut    !== undefined) siExtracted.attribut    = r.attribut    || '';
+    if (r.marque      !== undefined) siExtracted.marque      = r.marque      || '';
+
+    // Mettre à jour les inputs dans la grille sans re-render total
+    const grid = document.getElementById('siFieldsGrid');
+    ['natureBrute', 'attribut', 'marque'].forEach(key => {
+      const inp = grid ? grid.querySelector(`[data-sikey="${key}"]`) : null;
+      if (inp) inp.value = siExtracted[key] || '';
+    });
+
+    // Mettre à jour la barre de confiance pour indiquer la réécriture
+    const confBar = document.getElementById('siConfidenceBar');
+    if (confBar) {
+      const existing = confBar.querySelector('.si-conf-badge');
+      if (existing) existing.insertAdjacentHTML('afterend',
+        `<span class="si-rewrite-tag">✨ Libellé réécrit par IA</span>`);
+    }
+
+    toast('Libellé réécrit ✓', 'success');
+  } catch (err) {
+    toast('Erreur réécriture : ' + err.message, 'error');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '✨ Réécrire le libellé';
   }
 }
 

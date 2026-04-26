@@ -380,6 +380,103 @@ app.get('/api/smart-import-status', (_req, res) => {
   res.json({ available: !!GEMINI_API_KEY, configured: !!GEMINI_API_KEY });
 });
 
+// ─── Appel Gemini texte seul (sans image) ─────────────────────────────────────
+async function callGeminiText(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+  };
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Gemini API ${resp.status}: ${err.slice(0, 300)}`);
+  }
+  const data = await resp.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error(`Gemini: réponse vide — ${JSON.stringify(data).slice(0, 200)}`);
+  return text;
+}
+
+// ─── Prompt réécriture libellé ────────────────────────────────────────────────
+const REWRITE_LIBELLE_PROMPT = `Tu es un expert en référencement produit Carrefour (rayons frais R20-R24).
+Ta mission : décomposer et corriger des libellés produits qui peuvent être en abréviation BCP ou mal orthographiés.
+
+ABRÉVIATIONS BCP À DÉCODER :
+BF/VBF/VB = Boeuf/Viande Bovine Française · PC/PF = Porc/Porc Français · AG = Agneau
+VL = Veau · VG = Veau de grain · PO = Poulet · DI = Dinde · LAP = Lapin · EQ = Équin
+BQ = Barquette · ST = Sachet · FL = Filet · TR = Tranchés · PCE = Pièce · KG = Kilo
+CRF/CARREF = CARREFOUR · FQC = FILIERE QUALITE CARREFOUR · LR = LABEL ROUGE
+FR = Français/Française · IMP = Importé · CEE/UE = Europe · BIO/AB = Biologique · ELV = Élevé
+
+RÈGLES OBLIGATOIRES :
+1. natureBrute : nom principal, 1ère lettre majuscule, reste en minuscule. Ex : "Viande Bovine", "Saumon Atlantique", "Foie Gras de Canard"
+2. attribut : caractéristiques complémentaires (origine, format, qualité). Ex : "100% Française", "façon bouchère", "barquette de 200g tranchée". Null si rien à dire.
+3. marque : MAJUSCULES obligatoires, sans accents. Null si aucune marque identifiable. Ex : "CARREFOUR", "MAISON MONTFORT"
+4. libelleFinal : natureBrute + attribut + marque (concaténés avec espaces, en ignorant les null)
+
+EXEMPLES :
+"Viand bov 100% fr CRF" → {"natureBrute":"Viande Bovine","attribut":"100% Française","marque":"CARREFOUR","libelleFinal":"Viande Bovine 100% Française CARREFOUR"}
+"BF BQ 200G TR FQC FR" → {"natureBrute":"Viande Bovine","attribut":"Tranchée Française en barquette de 200g","marque":"FILIERE QUALITE CARREFOUR","libelleFinal":"Viande Bovine Tranchée Française en barquette de 200g FILIERE QUALITE CARREFOUR"}
+"Saum atl ELV 400g" → {"natureBrute":"Saumon Atlantique","attribut":"Élevé 400g","marque":null,"libelleFinal":"Saumon Atlantique Élevé 400g"}
+"Foie gras canard entier MAISON MONTFORT 200g" → {"natureBrute":"Foie Gras de Canard","attribut":"Entier 200g","marque":"MAISON MONTFORT","libelleFinal":"Foie Gras de Canard Entier 200g MAISON MONTFORT"}
+"camambert de normandi CRF" → {"natureBrute":"Camembert de Normandie","attribut":null,"marque":"CARREFOUR","libelleFinal":"Camembert de Normandie CARREFOUR"}
+
+Retourne UNIQUEMENT un tableau JSON valide (même ordre que l'input, sans texte autour) :
+[{"idx":0,"natureBrute":"...","attribut":"..." ou null,"marque":"..." ou null,"libelleFinal":"..."},...]`;
+
+// ─── Route : Réécriture libellé produit ──────────────────────────────────────
+app.post('/api/rewrite-libelle', async (req, res) => {
+  if (!GEMINI_API_KEY) {
+    return res.status(503).json({
+      error: 'Clé API Gemini non configurée.',
+      hint: 'Ajoutez GEMINI_API_KEY=... dans vos variables d\'environnement et redémarrez.',
+    });
+  }
+
+  const { items } = req.body;
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ error: 'Champ items[] requis' });
+  }
+
+  const BATCH_SIZE = 15; // libellés par appel Gemini
+  const allResults = [];
+
+  try {
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const chunk = items.slice(i, i + BATCH_SIZE);
+
+      const libellesBlock = chunk.map((item, j) => {
+        const rayon = item.rayon ? ` [rayon ${item.rayon}]` : '';
+        return `${i + j}: "${item.libelle}"${rayon}`;
+      }).join('\n');
+
+      const prompt = `${REWRITE_LIBELLE_PROMPT}\n\nLibellés à réécrire :\n${libellesBlock}`;
+      const text   = await callGeminiText(prompt);
+
+      const stripped  = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const jsonMatch = stripped.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error('Réponse IA non parsable pour le lot');
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      parsed.forEach((r, j) => {
+        r.idx = chunk[j]?.idx ?? (i + j);
+        allResults.push(r);
+      });
+    }
+
+    res.json({ results: allResults, total: allResults.length });
+  } catch (err) {
+    console.error('Rewrite libellé error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ─── Route : Smart Import (image + PDF → Gemini Vision) ──────────────────────
 app.post('/api/smart-import', async (req, res) => {

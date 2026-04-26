@@ -118,6 +118,10 @@
               <div class="libelle-preview" id="libellePreview">
                 <span class="lp-placeholder">Le libellé apparaîtra ici en temps réel…</span>
               </div>
+              <div class="rewrite-bar" id="rewriteBarForm" style="display:none">
+                <button type="button" class="btn btn-rewrite" id="rewriteFormBtn">✨ Réécrire avec IA</button>
+                <span class="rewrite-hint">Corrige les abréviations BCP et l'orthographe automatiquement</span>
+              </div>
               <div class="row3">
                 <div class="field">
                   <label for="natureBrute">Nature brute <span class="req">*</span></label>
@@ -391,10 +395,16 @@
 
           <div class="import-actions-bar">
             <span id="importActionInfo" class="import-action-info"></span>
-            <div style="display:flex;gap:8px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <button class="btn btn-rewrite" id="rewriteImportBtn" style="display:none">✨ Réécrire les libellés</button>
               <button class="btn btn-export" id="doExportDirectBtn">⬇ Exporter en Excel</button>
               <button class="btn btn-primary" id="doImportBtn">+ Ajouter au lot</button>
             </div>
+          </div>
+          <!-- Barre de progression réécriture -->
+          <div class="rewrite-progress-wrap" id="rewriteImportProgress" style="display:none">
+            <div class="rewrite-progress-bar"><div class="rewrite-progress-fill" id="rewriteImportFill" style="width:0%"></div></div>
+            <span class="rewrite-progress-label" id="rewriteImportLabel">0 / 0 libellés réécrits</span>
           </div>
 
         </div><!-- /mappingSection -->
@@ -450,6 +460,7 @@
             <div class="si-fields-grid" id="siFieldsGrid"></div>
             <div class="si-result-actions">
               <button class="btn btn-ghost" id="siRetryBtn2">← Nouvelle analyse</button>
+              <button class="btn btn-rewrite" id="siRewriteBtn" style="display:none">✨ Réécrire le libellé</button>
               <button class="btn btn-export" id="siDirectExportBtn">⬇ Exporter en Excel</button>
               <button class="btn btn-primary" id="siFillBtn">✓ Remplir le formulaire →</button>
             </div>

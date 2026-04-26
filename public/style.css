@@ -1649,3 +1649,101 @@ body {
   font-size: 10px; color: #dc2626; margin-top: 2px;
   max-width: 220px; word-break: break-word; line-height: 1.3;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RÉÉCRITURE LIBELLÉ IA
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Bouton réécriture — violet avec dégradé subtil */
+.btn-rewrite {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity .15s, transform .1s;
+  box-shadow: 0 1px 4px rgba(124,58,237,.35);
+}
+.btn-rewrite:hover  { opacity: .9; transform: translateY(-1px); }
+.btn-rewrite:active { transform: translateY(0); }
+.btn-rewrite:disabled {
+  background: var(--g5);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Barre réécriture sous la preview du libellé */
+.rewrite-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.rewrite-hint {
+  font-size: 11px;
+  color: var(--g6);
+  font-style: italic;
+}
+
+/* Libellé réécrit — highlight flash violet */
+.lp-rewritten {
+  color: #5b21b6;
+  font-weight: 700;
+  animation: rewriteFlash .6s ease;
+}
+@keyframes rewriteFlash {
+  0%   { background: rgba(124,58,237,.15); border-radius: 4px; padding: 2px 4px; }
+  100% { background: transparent; padding: 0; }
+}
+
+/* Barre de progression — import Excel en masse */
+.rewrite-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--g2);
+  border: 1px solid #ddd4fe;
+  border-radius: var(--radius);
+}
+.rewrite-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: #ede9fe;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.rewrite-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3aed, #a78bfa);
+  border-radius: 99px;
+  transition: width .3s ease;
+}
+.rewrite-progress-label {
+  font-size: 11px;
+  color: #5b21b6;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Tag "Libellé réécrit" dans la barre de confiance SI */
+.si-rewrite-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #ede9fe;
+  color: #5b21b6;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+}
