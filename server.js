@@ -20,7 +20,7 @@ async function callGemini(fileBase64, mimeType, prompt) {
         { text: prompt },
       ],
     }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
+    generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
   };
   const resp = await fetch(url, {
     method: 'POST',
