@@ -7,6 +7,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: GEMINI_API_KEY
+        sync: false   # obligatoire — active Smart Import + Réécriture libellé IA (aistudio.google.com)
       - key: ANTHROPIC_API_KEY
         sync: false   # à renseigner dans le dashboard Render → Environment
       - key: HF_TOKEN
