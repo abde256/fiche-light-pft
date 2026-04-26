@@ -396,8 +396,13 @@ app.post('/api/smart-import', async (req, res) => {
   try {
     const { text, tokens } = await callGemini(fileBase64, mimeType, SMART_IMPORT_PROMPT);
 
-    const jsonMatch = text.trim().match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Réponse IA non parsable — réessayez ou vérifiez le fichier');
+    // Gemini peut envelopper la réponse dans ```json ... ```
+    const stripped = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('Réponse Gemini brute:', text.slice(0, 500));
+      throw new Error('Réponse IA non parsable — réessayez ou vérifiez le fichier');
+    }
 
     const data = JSON.parse(jsonMatch[0]);
 
