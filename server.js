@@ -384,6 +384,19 @@ app.get('/api/smart-import-status', (_req, res) => {
   res.json({ available: !!GEMINI_API_KEY, configured: !!GEMINI_API_KEY });
 });
 
+// ─── Route debug : liste les modèles disponibles pour la clé ─────────────────
+app.get('/api/gemini-models', async (_req, res) => {
+  if (!GEMINI_API_KEY) return res.status(503).json({ error: 'GEMINI_API_KEY non configurée' });
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
+    const d = await r.json();
+    const names = (d.models || []).map(m => m.name);
+    res.json({ models: names });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Route : Smart Import (image + PDF → Gemini Vision) ──────────────────────
 app.post('/api/smart-import', async (req, res) => {
   if (!GEMINI_API_KEY) {
