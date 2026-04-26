@@ -55,7 +55,10 @@ const IMPORT_FIELD_ALIASES = {
   glucides:             ['glucides','glucide','carbohydrates','sucres totaux','glucides totaux'],
   sucres:               ['dont sucres','sucres','sucre'],
   proteines:            ['proteines','protéines','proteine','protéine','protein'],
-  sel:                  ['sel','sodium','sel equivalent','sel équivalent'],
+  fibres:               ['fibres','fibres alimentaires','fibre','dietary fiber','fibres alimentaires (fr_fr)'],
+  sodium:               ['sodium','sodium (fr_fr)'],
+  sel:                  ['sel','sel equivalent','sel équivalent','sel (fr_fr)'],
+  uniteEnergetique:     ['unite energetique','unité énergétique','unit energie'],
   conservation:         ['conservation','conditions de conservation','temperature conservation','modalites conservation','modalités de conservation'],
   nomLatin:             ['nom latin','latin','nom scientifique','denomination scientifique','dénomination scientifique','espece','espèce'],
   facettePecheElevage:  ['peche elevage','pêche elevage','peche','elevage','methode production','méthode de production','mode de production'],
@@ -1158,7 +1161,10 @@ function buildProductFromRow(row, mapping) {
     glucides:             get('glucides'),
     sucres:               get('sucres'),
     proteines:            get('proteines'),
+    fibres:               get('fibres'),
+    sodium:               get('sodium'),
     sel:                  get('sel'),
+    uniteEnergetique:     get('uniteEnergetique'),
     ingredients:          get('ingredients'),
     conservation:         get('conservation'),
     nomLatin:             get('nomLatin'),
@@ -1611,7 +1617,10 @@ function applySmartImport() {
     set('glucides',            d.glucides);
     set('sucres',              d.sucres);
     set('proteines',           d.proteines);
+    set('fibres',              d.fibres);
+    set('sodium',              d.sodium);
     set('sel',                 d.sel);
+    set('uniteEnergetique',    d.uniteEnergetique);
     chk('flagBio',             d.flagBio);
     chk('flagFQC',             d.flagFQC);
 

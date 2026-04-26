@@ -209,90 +209,83 @@ function buildLibelle(p) {
   return parts.join(' ');
 }
 
-// ─── Constructeur de ligne export ─────────────────────────────────────────────
+// ─── Trame DDM : champ → spec technique ───────────────────────────────────────
+// Ligne 1 = label champ, Ligne 2 = spec, Ligne 3+ = données
 
-function buildRow(p) {
-  const al = p.allergens || {};
+const TRAME_DDM = [
+  { col: 'EAN',                                                      spec: 'specProduit_DDM/tradeItemGTIN',                    get: p => String(p.ean || '').trim() },
+  { col: 'Nature brute produit (fr_FR)',                             spec: 'specProduit_DDM/pdctProductNature/fr_FR',           get: p => p.natureBrute || '' },
+  { col: 'Attribut / caractéristiques comm. (fr_FR)',               spec: 'specProduit_DDM/pdctProductQualifier/fr_FR',        get: p => p.attribut || '' },
+  { col: 'Marque Produit (fr_FR)',                                   spec: 'specProduit_DDM/pdctProductSubBrand/fr_FR',         get: p => p.marque ? removeAccents(String(p.marque).toUpperCase()) : '' },
+  { col: 'Conditionnement',                                          spec: 'specProduit_DDM/pdctPackaging',                    get: p => p.conditionnement || '' },
+  { col: 'Service consommateur',                                     spec: 'specProduit_DDM/pdctServiceConso',                 get: () => SERVICE_CONSOMMATEUR },
+  { col: 'Ingrédients (fr_FR)',                                      spec: 'specProduit_DDM/ingredientStatement/fr_FR',        get: p => p.ingredients || '' },
+  { col: 'Contient du Gluten',                                       spec: 'specProduit_DDM/pdctGlutenIncluded',               get: p => (p.allergens||{}).gluten       ? 'TRUE' : 'FALSE' },
+  { col: 'Contient du Lactose',                                      spec: 'specProduit_DDM/pdctLactoseIncluded',              get: p => (p.allergens||{}).lait         ? 'TRUE' : 'FALSE' },
+  { col: 'Contient du Soja',                                         spec: 'specProduit_DDM/pdctSoyIncluded',                  get: p => (p.allergens||{}).soja         ? 'TRUE' : 'FALSE' },
+  { col: "Contient de l'Arachide",                                   spec: 'specProduit_DDM/pdctArachidIncluded',              get: p => (p.allergens||{}).arachides    ? 'TRUE' : 'FALSE' },
+  { col: 'Contient du Céleri',                                       spec: 'specProduit_DDM/pdctCeleryIncluded',               get: p => (p.allergens||{}).celeri       ? 'TRUE' : 'FALSE' },
+  { col: "Contient de l'Œuf",                                        spec: 'specProduit_DDM/pdctEggIncluded',                  get: p => (p.allergens||{}).oeufs        ? 'TRUE' : 'FALSE' },
+  { col: 'Contient des crustacés',                                   spec: 'specProduit_DDM/pdctCrustaceansIncluded',          get: p => (p.allergens||{}).crustaces    ? 'TRUE' : 'FALSE' },
+  { col: 'Contient du poisson',                                      spec: 'specProduit_DDM/pdctFishIncluded',                 get: p => (p.allergens||{}).poisson      ? 'TRUE' : 'FALSE' },
+  { col: 'Contient des fruits à coque',                              spec: 'specProduit_DDM/pdctFruitACoqueIncluded',          get: p => (p.allergens||{}).fruitsACoque ? 'TRUE' : 'FALSE' },
+  { col: 'Contient de la Moutarde',                                  spec: 'specProduit_DDM/pdctMustardIncluded',              get: p => (p.allergens||{}).moutarde     ? 'TRUE' : 'FALSE' },
+  { col: 'Contient du Sésame',                                       spec: 'specProduit_DDM/pdctSesamIncluded',                get: p => (p.allergens||{}).sesame       ? 'TRUE' : 'FALSE' },
+  { col: 'Contient du Sulfite',                                      spec: 'specProduit_DDM/pdctSulfiteIncluded',              get: p => (p.allergens||{}).sulfites     ? 'TRUE' : 'FALSE' },
+  { col: 'Contient du Lupin',                                        spec: 'specProduit_DDM/pdctLupinIncluded',                get: p => (p.allergens||{}).lupin        ? 'TRUE' : 'FALSE' },
+  { col: 'Contient des Mollusques',                                  spec: 'specProduit_DDM/pdctMollusqueIncluded',            get: p => (p.allergens||{}).mollusques   ? 'TRUE' : 'FALSE' },
+  { col: 'Flag Inco',                                                spec: 'specProduit_DDM/flagInco',                         get: () => 'TRUE' },
+  { col: 'Conservation (fr_FR)',                                     spec: 'specProduit_DDM/pdctStorageBloc/fr_FR',            get: p => p.conservation || '' },
+  { col: 'Flag Bio',                                                 spec: 'specProduit_DDM/organicTradeItemCode',             get: p => p.flagBio ? 'TRUE' : 'FALSE' },
+  { col: 'Flag Filière Qualité Carrefour',                           spec: 'specProduit_DDM/flagEngagementQualCarrefour',      get: p => p.flagFQC ? 'TRUE' : 'FALSE' },
+  { col: 'Exposant',                                                 spec: 'specProduit_DDM/pdctTabNutriExposant',             get: () => 'pour 100g' },
+  { col: 'Unité énergétique (fr_FR)',                                spec: 'specProduit_DDM/pdctValNutriUnitEnerg/fr_FR',      get: p => p.uniteEnergetique || '' },
+  { col: 'Valeur énergétique (fr_FR)',                               spec: 'specProduit_DDM/pdctValNutriValEnerg/fr_FR',       get: p => p.valeursEnergetiques || '' },
+  { col: 'Proteines (fr_FR)',                                        spec: 'specProduit_DDM/pdctValNutriProtide/fr_FR',        get: p => p.proteines || '' },
+  { col: 'Glucides (fr_FR)',                                         spec: 'specProduit_DDM/pdctValNutriGlucides/fr_FR',       get: p => p.glucides || '' },
+  { col: 'Glucides dont sucre (fr_FR)',                              spec: 'specProduit_DDM/pdctValNutriDontSucre/fr_FR',      get: p => p.sucres || '' },
+  { col: 'Matières grasses (fr_FR)',                                 spec: 'specProduit_DDM/pdctValNutriLipides/fr_FR',        get: p => p.graisses || '' },
+  { col: 'Matières grasses dont Acides Gras Saturés (fr_FR)',       spec: 'specProduit_DDM/pdctValNutriAcGrasSat/fr_FR',      get: p => p.grasSatures || '' },
+  { col: 'Fibres alimentaires (fr_FR)',                              spec: 'specProduit_DDM/pdctValNutriFibres/fr_FR',         get: p => p.fibres || '' },
+  { col: 'Sodium (fr_FR)',                                           spec: 'specProduit_DDM/pdctValNutriSodium/fr_FR',         get: p => p.sodium || '' },
+  { col: 'Sel',                                                      spec: 'specProduit_DDM/pdctValNutriSel',                  get: p => p.sel || '' },
+  { col: 'Info Bandeau (Coupe,…)',                                   spec: 'specProduit_DDM/infoBandeau',                      get: p => p.infoBandeau || '' },
+  { col: 'Palier de commande (en quantité, Kilo ou Litre)',          spec: 'specProduit_DDM/StepPurchase',                     get: p => p.palierCommande || '' },
+  { col: 'Fourchette prép + ou - en Gramme',                        spec: 'specProduit_DDM/pdctMinMaxPrepPoidsVariable',      get: () => '0' },
+];
 
-  const row = {
-    // ── Identification ──────────────────────────────────────────────────────
-    'EAN':                              String(p.ean || '').trim(),
-    'Libellé client (fr_FR)':           buildLibelle(p),
-    'Nature brute':                     p.natureBrute  || '',
-    'Attribut':                         p.attribut     || '',
-    'Marque produit':                   p.marque ? removeAccents(String(p.marque).toUpperCase()) : '',
-    'Conditionnement':                  p.conditionnement || '',
-    'Service consommateur':             SERVICE_CONSOMMATEUR,
-    // ── Allergènes (14 colonnes TRUE/FALSE) ─────────────────────────────────
-    'Gluten':                           al.gluten       ? 'TRUE' : 'FALSE',
-    'Lactose':                          al.lait         ? 'TRUE' : 'FALSE',
-    'Soja':                             al.soja         ? 'TRUE' : 'FALSE',
-    'Arachides':                        al.arachides    ? 'TRUE' : 'FALSE',
-    'Céleri':                           al.celeri       ? 'TRUE' : 'FALSE',
-    'Oeufs':                            al.oeufs        ? 'TRUE' : 'FALSE',
-    'Crustacés':                        al.crustaces    ? 'TRUE' : 'FALSE',
-    'Poisson':                          al.poisson      ? 'TRUE' : 'FALSE',
-    'Fruits à coque':                   al.fruitsACoque ? 'TRUE' : 'FALSE',
-    'Moutarde':                         al.moutarde     ? 'TRUE' : 'FALSE',
-    'Sésame':                           al.sesame       ? 'TRUE' : 'FALSE',
-    'Sulfites':                         al.sulfites     ? 'TRUE' : 'FALSE',
-    'Lupin':                            al.lupin        ? 'TRUE' : 'FALSE',
-    'Mollusques':                       al.mollusques   ? 'TRUE' : 'FALSE',
-    // ── Flags ────────────────────────────────────────────────────────────────
-    'Flag INCO':                        'TRUE',
-    'Flag Bio':                         p.flagBio ? 'TRUE' : 'FALSE',
-    'Flag FQC':                         p.flagFQC ? 'TRUE' : 'FALSE',
-    'Filière Qualité Carrefour':        p.flagFQC ? 'TRUE' : 'FALSE',
-    'Exposant':                         'pour 100g',
-    // ── Valeurs nutritionnelles ──────────────────────────────────────────────
-    'Valeur énergétique (fr_FR)':       p.valeursEnergetiques || '',
-    'Matières grasses (fr_FR)':         p.graisses            || '',
-    'dont acides gras saturés (fr_FR)': p.grasSatures         || '',
-    'Glucides (fr_FR)':                 p.glucides            || '',
-    'dont sucres (fr_FR)':              p.sucres              || '',
-    'Protéines (fr_FR)':                p.proteines           || '',
-    'Sel':                              p.sel                 || '',
-    // ── Données commerciales ─────────────────────────────────────────────────
-    'Info bandeau':                     p.infoBandeau     || '',
-    'Palier de commande':               p.palierCommande  || '',
-    'Fourchette prép ± en Gramme':      '0',
-  };
+// ─── Constructeur AOA (Array of Arrays) pour la trame DDM ─────────────────────
 
-  // Colonnes rayon-spécifiques (ajoutées si renseignées)
-  if (p.ingredients)         row['Ingrédients']             = p.ingredients;
-  if (p.allergenes)          row['Présence allergènes']     = p.allergenes ? 'TRUE' : 'FALSE';
-  if (p.conservation)        row['Conservation']            = p.conservation;
-  if (p.nomLatin)            row['Nom latin']               = p.nomLatin;
-  if (p.facettePecheElevage) row['Facette Pêche/Élevage']   = p.facettePecheElevage;
-  if (p.categorie)           row['Catégorie']               = p.categorie;
-  if (p.rayon === 'R24') {
-    row['Viande Bovine Française'] = p.viandeBovine ? 'TRUE' : 'FALSE';
-    row['Porc Français']           = p.porcFrancais ? 'TRUE' : 'FALSE';
-  }
-
-  return row;
+function buildExportAOA(products) {
+  const headers  = TRAME_DDM.map(c => c.col);
+  const specs    = TRAME_DDM.map(c => c.spec);
+  const dataRows = products.map(p => TRAME_DDM.map(c => c.get(p)));
+  return [headers, specs, ...dataRows];
 }
 
 // ─── Formatage Excel ──────────────────────────────────────────────────────────
 
-function forceTextColumns(ws, rows, colNames) {
-  if (!rows || !rows.length) return;
-  const headers = Object.keys(rows[0]);
-  colNames.forEach(colName => {
-    const ci = headers.indexOf(colName);
-    if (ci === -1) return;
-    rows.forEach((row, ri) => {
-      const v = row[colName];
-      if (!v && v !== 0) return;
-      const ref = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
-      if (ws[ref]) { ws[ref].t = 's'; ws[ref].v = String(v); delete ws[ref].z; }
-    });
+function forceTextColumnsAOA(ws, aoa, textColIndices) {
+  // aoa[0] = headers, aoa[1] = specs, aoa[2+] = données
+  textColIndices.forEach(ci => {
+    for (let ri = 2; ri < aoa.length; ri++) {
+      const ref = XLSX.utils.encode_cell({ r: ri, c: ci });
+      if (ws[ref]) { ws[ref].t = 's'; ws[ref].v = String(aoa[ri][ci]); delete ws[ref].z; }
+    }
   });
 }
 
-function setColumnWidths(ws, rows) {
-  if (!rows || !rows.length) return;
-  ws['!cols'] = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length + 4, 16) }));
+function setColumnWidthsAOA(ws, headers) {
+  ws['!cols'] = headers.map(h => ({ wch: Math.max(String(h).length + 4, 16) }));
+}
+
+function styleSpecRow(ws, colCount) {
+  // Mettre la ligne 2 (specs) en gris italic
+  for (let ci = 0; ci < colCount; ci++) {
+    const ref = XLSX.utils.encode_cell({ r: 1, c: ci });
+    if (!ws[ref]) ws[ref] = { t: 's', v: '' };
+    ws[ref].s = { font: { italic: true, color: { rgb: 'A0A0A0' } } };
+  }
 }
 
 // ─── Route : Import fichier ───────────────────────────────────────────────────
@@ -342,12 +335,15 @@ Pour chaque champ absent ou incertain, retourne null — ne devine JAMAIS.
   "flagFQC": true ou false,
   "conservation": "ex: 'A conserver entre +0°C et +4°C', 'A conserver à température ambiante', ou null",
   "ingredients": "liste complète des ingrédients si visible, sinon null",
-  "valeursEnergetiques": "ex: '250 kcal / 1045 kJ', ou null",
+  "uniteEnergetique": "unité de la valeur énergétique, ex: 'kcal / kJ', ou null",
+  "valeursEnergetiques": "valeur numérique seule, ex: '250 / 1045', ou valeur complète '250 kcal / 1045 kJ', ou null",
   "graisses": "ex: '12g', ou null",
   "grasSatures": "ex: '4g', ou null",
   "glucides": "ex: '30g', ou null",
   "sucres": "ex: '5g', ou null",
   "proteines": "ex: '8g', ou null",
+  "fibres": "ex: '2.5g', ou null",
+  "sodium": "ex: '0.48g', ou null",
   "sel": "ex: '1.2g', ou null",
   "allergens": {
     "gluten": false, "lait": false, "soja": false, "arachides": false,
@@ -450,16 +446,23 @@ app.post('/api/export', (req, res) => {
   }
 
   try {
-    const wb   = XLSX.utils.book_new();
-    const rows = products.map(buildRow);
-    const ws   = XLSX.utils.json_to_sheet(rows);
+    const aoa = buildExportAOA(products);
+    const wb  = XLSX.utils.book_new();
+    const ws  = XLSX.utils.aoa_to_sheet(aoa);
 
-    forceTextColumns(ws, rows, ['EAN', 'Palier de commande', 'Fourchette prép ± en Gramme']);
-    setColumnWidths(ws, rows);
+    // Colonnes à forcer en texte : EAN, Palier de commande, Fourchette
+    const textCols = TRAME_DDM.reduce((acc, c, i) => {
+      if (['EAN','Palier de commande (en quantité, Kilo ou Litre)','Fourchette prép + ou - en Gramme'].includes(c.col)) acc.push(i);
+      return acc;
+    }, []);
+    forceTextColumnsAOA(ws, aoa, textCols);
+    setColumnWidthsAOA(ws, aoa[0]);
+    styleSpecRow(ws, aoa[0].length);
+
     XLSX.utils.book_append_sheet(wb, ws, 'Fiches Light PFT');
 
     const buffer   = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    const filename = `fiche-light-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const filename = `fiche-light-DDM-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
