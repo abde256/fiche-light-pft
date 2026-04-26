@@ -1549,8 +1549,33 @@ body {
 .si-field-high   { background: var(--g1); border-left-color: #22c55e; }
 .si-field-medium { background: #fffbeb;   border-left-color: #f59e0b; }
 .si-field-low    { background: #fef2f2;   border-left-color: #ef4444; }
-.si-field-label { font-size: 11px; font-weight: 600; color: var(--g6); padding-top: 1px; }
+.si-field-label { font-size: 11px; font-weight: 600; color: var(--g6); padding-top: 4px; }
 .si-field-value { font-size: 12px; color: var(--g9); line-height: 1.4; word-break: break-word; }
+
+/* Champs éditables dans le panel résultats */
+.si-field-input {
+  font-size: 12px; color: var(--g9); background: transparent;
+  border: 1px solid transparent; border-radius: 4px;
+  padding: 2px 6px; width: 100%; line-height: 1.4;
+  font-family: inherit; transition: border-color .15s, background .15s;
+}
+.si-field-input:hover  { border-color: var(--g4); background: #fff; }
+.si-field-input:focus  { border-color: var(--blue); background: #fff; outline: none; box-shadow: 0 0 0 2px var(--blue-lt); }
+.si-field-textarea     { resize: vertical; min-height: 52px; }
+.si-field-select       { cursor: pointer; }
+.si-allergen-list      { font-size: 12px; color: var(--g9); }
+
+/* Recommandations */
+.si-recs-section { margin-top: 8px; border-top: 1px solid var(--g3); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.si-rec-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
+  padding: 8px 10px; font-size: 12px;
+}
+.si-rec-item.si-rec-applied { background: var(--green-bg); border-color: #86efac; }
+.si-rec-text   { display: flex; align-items: center; gap: 6px; flex: 1; color: var(--g8); }
+.si-rec-icon   { font-size: 14px; flex-shrink: 0; }
+.si-rec-btn    { flex-shrink: 0; font-size: 11px; padding: 3px 10px; white-space: nowrap; }
 .si-conf-dot-high, .si-conf-dot-medium, .si-conf-dot-low {
   width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; flex-shrink: 0;
 }

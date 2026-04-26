@@ -1156,7 +1156,8 @@ function initSmartImport() {
   // Résultats fichier unique
   document.getElementById('siRetryBtn').addEventListener('click',  resetSmartImport);
   document.getElementById('siRetryBtn2').addEventListener('click', resetSmartImport);
-  document.getElementById('siFillBtn').addEventListener('click',   applySmartImport);
+  document.getElementById('siFillBtn').addEventListener('click',          applySmartImport);
+  document.getElementById('siDirectExportBtn').addEventListener('click',  exportSmartImportDirect);
 
   // Résultats batch
   document.getElementById('siBatchRetryBtn').addEventListener('click', resetSmartImport);
@@ -1250,13 +1251,15 @@ function renderSmartImportResults(data) {
   const conf = confMap[overall] || confMap.medium;
   document.getElementById('siConfidenceBar').innerHTML =
     `<span class="si-conf-badge ${conf.cls}">${conf.label}</span>
-     <span class="si-conf-hint">Vérifiez les champs en orange avant de valider</span>`;
+     <span class="si-conf-hint">Champs modifiables directement · points verts = haute confiance</span>`;
 
   // Grille de champs
   const grid = document.getElementById('siFieldsGrid');
   grid.innerHTML = '';
 
-  // Groupes à afficher
+  const BOOL_KEYS = new Set(['flagBio','flagFQC','viandeBovine','porcFrancais']);
+  const LONG_KEYS = new Set(['ingredients','conservation']);
+
   const groups = [
     { id: 'identification', label: 'Identification' },
     { id: 'commercial',     label: 'Données commerciales' },
@@ -1280,33 +1283,57 @@ function renderSmartImportResults(data) {
 
       const fieldConf = cfg[key] || overall;
       const isEmpty   = value === false || value === '' || value === null;
-      if (isEmpty && key !== 'flagBio' && key !== 'flagFQC' && key !== 'viandeBovine' && key !== 'porcFrancais') return;
-
-      let displayVal = '';
-      if (typeof value === 'boolean') displayVal = value ? '✅ TRUE' : '⬜ FALSE';
-      else displayVal = String(value);
-
-      // Tronquer les longs textes (ingrédients)
-      const truncated = displayVal.length > 120 ? displayVal.slice(0, 120) + '…' : displayVal;
+      if (isEmpty && !BOOL_KEYS.has(key)) return;
 
       const row = document.createElement('div');
       row.className = `si-field si-field-${fieldConf}`;
-      row.innerHTML = `
-        <div class="si-field-label">${meta.label}</div>
-        <div class="si-field-value" title="${displayVal.replace(/"/g,'&quot;')}">${truncated}</div>
-        <div class="si-field-conf si-conf-dot-${fieldConf}"></div>`;
+
+      let inputEl;
+      if (BOOL_KEYS.has(key)) {
+        // Checkbox éditable
+        inputEl = document.createElement('select');
+        inputEl.className = 'si-field-input si-field-select';
+        inputEl.innerHTML = '<option value="true">✅ TRUE</option><option value="false">⬜ FALSE</option>';
+        inputEl.value = value ? 'true' : 'false';
+        inputEl.addEventListener('change', () => { siExtracted[key] = inputEl.value === 'true'; });
+      } else if (LONG_KEYS.has(key)) {
+        // Textarea pour les longs textes
+        inputEl = document.createElement('textarea');
+        inputEl.className = 'si-field-input si-field-textarea';
+        inputEl.value = String(value);
+        inputEl.rows  = 3;
+        inputEl.addEventListener('input', () => { siExtracted[key] = inputEl.value; });
+      } else {
+        // Input texte simple
+        inputEl = document.createElement('input');
+        inputEl.type      = 'text';
+        inputEl.className = 'si-field-input';
+        inputEl.value     = String(value);
+        inputEl.addEventListener('input', () => { siExtracted[key] = inputEl.value; });
+      }
+
+      const labelEl = document.createElement('div');
+      labelEl.className   = 'si-field-label';
+      labelEl.textContent = meta.label;
+
+      const dotEl = document.createElement('div');
+      dotEl.className = `si-field-conf si-conf-dot-${fieldConf}`;
+
+      row.appendChild(labelEl);
+      row.appendChild(inputEl);
+      row.appendChild(dotEl);
       section.appendChild(row);
     });
 
-    // Allergènes détectés
+    // Allergènes détectés (éditables)
     if (group.id === 'composition' && d.allergens) {
       const detected = Object.entries(d.allergens).filter(([,v]) => v).map(([k]) => SI_ALLERGEN_LABELS[k] || k);
       if (detected.length) {
         const row = document.createElement('div');
         row.className = `si-field si-field-${cfg.allergens || overall}`;
         row.innerHTML = `
-          <div class="si-field-label">Allergènes</div>
-          <div class="si-field-value">${detected.join(' · ')}</div>
+          <div class="si-field-label">Allergènes détectés</div>
+          <div class="si-field-value si-allergen-list">${detected.join(' · ')}</div>
           <div class="si-field-conf si-conf-dot-${cfg.allergens || overall}"></div>`;
         section.appendChild(row);
       }
@@ -1314,6 +1341,70 @@ function renderSmartImportResults(data) {
 
     if (section.children.length > 1) grid.appendChild(section);
   });
+
+  // ── Recommandations intelligentes ──────────────────────────────────────────
+  const recs = buildRecommendations(d);
+  if (recs.length) {
+    const recSection = document.createElement('div');
+    recSection.className = 'si-recs-section';
+    recSection.innerHTML = `<div class="si-group-title">💡 Recommandations</div>`;
+    recs.forEach(rec => {
+      const item = document.createElement('div');
+      item.className = 'si-rec-item';
+      item.innerHTML = `
+        <div class="si-rec-text">
+          <span class="si-rec-icon">${rec.icon}</span>
+          <span>${rec.message}</span>
+        </div>
+        ${rec.action ? `<button class="btn btn-sm btn-outline si-rec-btn" data-key="${rec.key}" data-val="${String(rec.value).replace(/"/g,'&quot;')}">${rec.action}</button>` : ''}`;
+      if (rec.action) {
+        item.querySelector('.si-rec-btn').addEventListener('click', () => {
+          siExtracted[rec.key] = rec.value;
+          // Mettre à jour l'input correspondant s'il existe
+          const inp = grid.querySelector(`[data-sikey="${rec.key}"]`);
+          if (inp) inp.value = rec.value;
+          item.classList.add('si-rec-applied');
+          item.querySelector('.si-rec-btn').textContent = '✓ Appliqué';
+          item.querySelector('.si-rec-btn').disabled = true;
+          toast(`"${rec.key}" mis à jour`, 'info');
+        });
+      }
+      recSection.appendChild(item);
+    });
+    grid.appendChild(recSection);
+  }
+}
+
+function buildRecommendations(d) {
+  const recs = [];
+
+  if (!d.ean)
+    recs.push({ icon: '⚠️', message: 'EAN manquant — scannez le code-barres du produit', key: 'ean', action: null, value: null });
+
+  if (!d.natureBrute)
+    recs.push({ icon: '⚠️', message: 'Nature brute manquante — champ obligatoire pour l\'export', key: 'natureBrute', action: null, value: null });
+
+  if (!d.conditionnement && d.infoBandeau)
+    recs.push({ icon: '💡', message: `Conditionnement non détecté — suggestion depuis Info bandeau`, key: 'conditionnement', action: '+ Appliquer', value: `la pièce de ${d.infoBandeau}` });
+
+  if (!d.palierCommande && d.infoBandeau) {
+    const kg = extractKgFromText(d.infoBandeau);
+    if (kg) recs.push({ icon: '💡', message: `Palier de commande calculé depuis "${d.infoBandeau}"`, key: 'palierCommande', action: '+ Appliquer', value: kg.toFixed(3) });
+  }
+
+  if (d.marque && d.marque !== d.marque.toUpperCase())
+    recs.push({ icon: '✏️', message: 'Marque doit être en MAJUSCULES sans accents', key: 'marque', action: '+ Corriger', value: d.marque.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'') });
+
+  if (d.natureBrute && !d.attribut)
+    recs.push({ icon: '💡', message: 'Attribut vide — précisez l\'origine ou la spécificité du produit', key: 'attribut', action: null, value: null });
+
+  if (d.ingredients && d.allergens && !Object.values(d.allergens).some(Boolean))
+    recs.push({ icon: '⚠️', message: 'Ingrédients présents mais aucun allergène détecté — vérifiez manuellement', key: null, action: null, value: null });
+
+  if (!d.conservation && ['R20','R21','R24'].includes(d.rayon))
+    recs.push({ icon: '💡', message: `Conservation manquante pour ${d.rayon} — obligatoire en frais`, key: 'conservation', action: '+ Ajouter', value: 'A conserver entre 0°C et +4°C' });
+
+  return recs;
 }
 
 function resetSmartImport() {
@@ -1395,6 +1486,43 @@ function applySmartImport() {
     toast('Formulaire rempli depuis l\'import IA — vérifiez et ajoutez au lot', 'info');
     document.getElementById('ean').focus();
   }, rayon ? 80 : 0);
+}
+
+// ─── Export direct depuis le panel Smart Import ───────────────────────────────
+
+async function exportSmartImportDirect() {
+  if (!siExtracted) return;
+  const d = siExtracted;
+
+  if (!d.natureBrute) { toast('Nature brute obligatoire pour l\'export', 'error'); return; }
+  if (!d.conditionnement) { toast('Conditionnement obligatoire pour l\'export', 'error'); return; }
+
+  const btn = document.getElementById('siDirectExportBtn');
+  btn.disabled    = true;
+  btn.textContent = '⏳ Génération…';
+
+  try {
+    const resp = await fetch('/api/export', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ products: [d] }),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    const blob     = await resp.blob();
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    const ean      = String(d.ean || 'fiche').replace(/\s/g,'');
+    a.href         = url;
+    a.download     = `${ean}_fiche-light.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Fiche exportée en Excel', 'success');
+  } catch (err) {
+    toast('Erreur export : ' + err.message, 'error');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '⬇ Exporter en Excel';
+  }
 }
 
 // ─── Batch smart import ───────────────────────────────────────────────────────
