@@ -13,13 +13,11 @@ if (GEMINI_API_KEY) {
 
 // Modèles préférés par ordre — seuls ceux disponibles sur la clé seront utilisés
 const PREFERRED_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-pro',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro-latest',
-  'gemini-1.5-flash-latest',
-  'gemini-pro-vision',
+  'gemini-2.5-flash',      // Meilleur qualité/vitesse — principal
+  'gemini-2.5-flash-lite', // Léger et très rapide — fallback 1
+  'gemini-2.0-flash',      // Stable et éprouvé — fallback 2
+  'gemini-2.0-flash-lite', // Ultra-léger — fallback 3
+  'gemini-flash-latest',   // Alias dernier flash disponible — ultime fallback
 ];
 
 let GEMINI_MODELS = [...PREFERRED_MODELS]; // sera filtré au démarrage
