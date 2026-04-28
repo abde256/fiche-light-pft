@@ -1374,12 +1374,12 @@ async function handleSmartImportFile(file) {
   document.getElementById('siResults').style.display      = 'none';
   document.getElementById('siBatchResults').style.display = 'none';
   document.getElementById('siBatchProgWrap').style.display = 'none';
-  document.getElementById('siProcessingTitle').textContent = 'Claude analyse le document…';
+  document.getElementById('siProcessingTitle').textContent = 'Gemini analyse le document…';
   document.getElementById('siProcessingSub').textContent =
     file.type === 'application/pdf' ? 'Lecture du PDF en cours…' : 'Analyse de l\'image…';
 
   try {
-    // Redimensionner les images pour respecter la limite Claude (~5MB base64 max)
+    // Redimensionner les images pour respecter la limite Gemini (~5MB base64 max)
     const b64 = file.type === 'application/pdf'
       ? await fileToBase64(file)
       : await readFileAsBase64(file, 2048);
@@ -1731,7 +1731,7 @@ async function handleBatchSmartImport(files) {
   document.getElementById('siBatchResults').style.display  = 'none';
   document.getElementById('siProcessing').style.display    = 'flex';
   document.getElementById('siProcessingTitle').textContent = `Traitement de ${valid.length} fichier(s) en cours…`;
-  document.getElementById('siProcessingSub').textContent   = 'Claude analyse chaque document';
+  document.getElementById('siProcessingSub').textContent   = 'Gemini analyse chaque document';
 
   const wrap  = document.getElementById('siBatchProgWrap');
   const fill  = document.getElementById('siBatchProgFill');
@@ -1760,7 +1760,7 @@ async function handleBatchSmartImport(files) {
 
 async function processFileForBatch(file) {
   try {
-    // Redimensionner les images pour respecter la limite Claude (~5MB base64 max)
+    // Redimensionner les images pour respecter la limite Gemini (~5MB base64 max)
     const b64 = file.type === 'application/pdf'
       ? await fileToBase64(file)
       : await readFileAsBase64(file, 2048);
@@ -1779,7 +1779,7 @@ async function processFileForBatch(file) {
 
 function buildProductFromExtracted(d, filename) {
   if (!d) return {};
-  // EAN : priorité à ce que Claude détecte, sinon on lit le nom du fichier
+  // EAN : priorité à ce que Gemini détecte, sinon on lit le nom du fichier
   const eanFromFile = filename ? extractEanFromFilename(filename) : '';
   const eanResolved = (d.ean && String(d.ean).trim()) || eanFromFile || '';
   const p = {
