@@ -11,12 +11,50 @@ if (GEMINI_API_KEY) {
   console.log('\n🧠  Gemini activé — import intelligent image/PDF disponible\n');
 }
 
-// Modèles stables par ordre de préférence — tous compatibles v1beta avec vision
-const GEMINI_MODELS = [
-  'gemini-2.0-flash',       // Stable, rapide, gratuit — modèle principal
-  'gemini-2.0-flash-lite',  // Ultra-rapide, léger — fallback 1
-  'gemini-1.5-flash-8b',    // Petit mais capable — fallback 2
+// Modèles préférés par ordre — seuls ceux disponibles sur la clé seront utilisés
+const PREFERRED_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-pro',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro-latest',
+  'gemini-1.5-flash-latest',
+  'gemini-pro-vision',
 ];
+
+let GEMINI_MODELS = [...PREFERRED_MODELS]; // sera filtré au démarrage
+
+// Auto-détecte les modèles réellement disponibles sur la clé via ListModels
+async function detectGeminiModels() {
+  if (!GEMINI_API_KEY) return;
+  try {
+    const url  = `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error(`ListModels HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    const available = new Set(
+      (data.models || [])
+        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map(m => m.name.replace('models/', ''))
+    );
+
+    const filtered = PREFERRED_MODELS.filter(m => available.has(m));
+
+    if (filtered.length) {
+      GEMINI_MODELS = filtered;
+      console.log(`\n📋  Modèles Gemini actifs : ${GEMINI_MODELS.join(' → ')}\n`);
+    } else {
+      // Aucun modèle préféré → utiliser n'importe quel modèle vision disponible
+      GEMINI_MODELS = [...available].filter(m =>
+        /flash|pro|vision/.test(m) && !m.includes('embedding') && !m.includes('aqa')
+      ).slice(0, 3);
+      console.log(`\n⚠️  Modèles de secours détectés : ${GEMINI_MODELS.join(' → ')}\n`);
+    }
+  } catch (err) {
+    console.warn(`\n⚠️  Impossible de lister les modèles Gemini (${err.message}) — liste par défaut conservée\n`);
+  }
+}
 
 async function callGeminiModel(model, bodyObj) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
@@ -1095,6 +1133,30 @@ app.post('/api/process-image', async (req, res) => {
   }
 });
 
+// ─── Route : diagnostic modèles Gemini disponibles ───────────────────────────
+app.get('/api/gemini-models', async (_req, res) => {
+  if (!GEMINI_API_KEY) return res.json({ error: 'GEMINI_API_KEY non configurée', active: [] });
+  try {
+    const url  = `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) return res.status(resp.status).json({ error: `ListModels HTTP ${resp.status}` });
+    const data = await resp.json();
+
+    const all = (data.models || []).map(m => ({
+      name:    m.name.replace('models/', ''),
+      methods: m.supportedGenerationMethods || [],
+    }));
+
+    res.json({
+      active:    GEMINI_MODELS,
+      available: all.filter(m => m.methods.includes('generateContent')).map(m => m.name),
+      all:       all.map(m => m.name),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, active: GEMINI_MODELS });
+  }
+});
+
 // ─── Démarrage ────────────────────────────────────────────────────────────────
 
 // Servir JSZip depuis node_modules (pour la création de ZIP côté navigateur)
@@ -1102,6 +1164,7 @@ app.get('/jszip.min.js', (_req, res) => {
   res.sendFile(path.join(__dirname, 'node_modules/jszip/dist/jszip.min.js'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`\n✅  Fiche Light PFT — http://localhost:${PORT}\n`);
+  await detectGeminiModels(); // détecte les modèles disponibles après démarrage
 });
