@@ -1354,9 +1354,9 @@ function initSmartImport() {
   });
 }
 
-const SI_ALLOWED  = ['image/jpeg','image/png','image/webp','application/pdf'];
-const SI_MAX_MB   = 20;
-const SI_CONCURRENCY = 3; // fichiers traités en parallèle
+const SI_ALLOWED     = ['image/jpeg','image/png','image/webp','application/pdf'];
+const SI_MAX_MB      = 20;
+const SI_CONCURRENCY = 1; // traitement séquentiel — évite la saturation API (15 req/min gratuit)
 
 // Résultats batch en mémoire : [{ file, status, data, error, product }]
 let siBatchRows = [];
@@ -1740,17 +1740,35 @@ async function handleBatchSmartImport(files) {
   fill.style.width   = '0%';
   label.textContent  = `0 / ${valid.length}`;
 
-  let done = 0;
+  const batchStart = Date.now();
+  let errCount = 0;
 
-  // Traitement concurrent par tranches de SI_CONCURRENCY
-  for (let i = 0; i < valid.length; i += SI_CONCURRENCY) {
-    const chunk = valid.slice(i, i + SI_CONCURRENCY);
-    const results = await Promise.all(chunk.map(f => processFileForBatch(f)));
-    results.forEach(r => siBatchRows.push(r));
-    done += chunk.length;
-    const pct = Math.round((done / valid.length) * 100);
+  // Traitement séquentiel — 1 fichier à la fois pour respecter le quota gratuit (15 req/min)
+  for (let i = 0; i < valid.length; i++) {
+    const result = await processFileForBatch(valid[i]);
+    siBatchRows.push(result);
+    if (result.status === 'error') errCount++;
+
+    const done = i + 1;
+    const pct  = Math.round((done / valid.length) * 100);
     fill.style.width  = pct + '%';
     label.textContent = `${done} / ${valid.length}`;
+
+    // Affichage ETA
+    if (done < valid.length) {
+      const elapsed    = (Date.now() - batchStart) / 1000;
+      const secsPerDoc = elapsed / done;
+      const secsLeft   = Math.round(secsPerDoc * (valid.length - done));
+      const etaStr     = secsLeft >= 60
+        ? `~${Math.ceil(secsLeft / 60)} min restantes`
+        : `~${secsLeft}s restantes`;
+      const errStr     = errCount > 0 ? ` · ${errCount} erreur(s)` : '';
+      document.getElementById('siProcessingSub').textContent =
+        `Gemini analyse chaque document · ${etaStr}${errStr}`;
+    } else {
+      document.getElementById('siProcessingSub').textContent =
+        `Traitement terminé — ${valid.length - errCount} réussi(s)${errCount ? `, ${errCount} erreur(s)` : ''}`;
+    }
   }
 
   document.getElementById('siProcessing').style.display    = 'none';

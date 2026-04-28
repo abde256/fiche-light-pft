@@ -11,8 +11,12 @@ if (GEMINI_API_KEY) {
   console.log('\n🧠  Gemini activé — import intelligent image/PDF disponible\n');
 }
 
-// Modèles par ordre de préférence (fallback automatique si 503)
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+// Modèles stables par ordre de préférence — tous compatibles v1beta avec vision
+const GEMINI_MODELS = [
+  'gemini-2.0-flash',       // Stable, rapide, gratuit — modèle principal
+  'gemini-2.0-flash-lite',  // Ultra-rapide, léger — fallback 1
+  'gemini-1.5-flash-8b',    // Petit mais capable — fallback 2
+];
 
 async function callGeminiModel(model, bodyObj) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
@@ -20,49 +24,65 @@ async function callGeminiModel(model, bodyObj) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(bodyObj),
-    signal: AbortSignal.timeout(35000),
+    signal: AbortSignal.timeout(40000),
   });
   if (!resp.ok) {
-    const err = await resp.text();
-    const error = new Error(`Gemini API ${resp.status}: ${err.slice(0, 400)}`);
-    error.status = resp.status;
+    const errText = await resp.text();
+    const error   = new Error(`Gemini API ${resp.status}: ${errText.slice(0, 400)}`);
+    error.status  = resp.status;
     throw error;
   }
   return resp.json();
 }
 
+// Retry exponentiel par modèle, puis passage au modèle suivant
 async function callGeminiWithFallback(bodyObj) {
+  const MAX_RETRIES = 4; // tentatives par modèle : 1 + 3 retries
   let lastError;
+
   for (const model of GEMINI_MODELS) {
-    try {
-      const data = await callGeminiModel(model, bodyObj);
-      if (model !== GEMINI_MODELS[0]) console.log(`  ℹ️  Fallback utilisé : ${model}`);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const data = await callGeminiModel(model, bodyObj);
 
-      const candidate = data.candidates?.[0];
-      if (!candidate) throw new Error(`Gemini: aucun candidat — ${JSON.stringify(data).slice(0, 300)}`);
-      if (candidate.finishReason && candidate.finishReason !== 'STOP')
-        throw new Error(`Gemini bloqué (${candidate.finishReason})`);
+        const candidate = data.candidates?.[0];
+        if (!candidate) throw new Error(`Gemini: aucun candidat`);
+        if (candidate.finishReason && candidate.finishReason !== 'STOP')
+          throw new Error(`Gemini bloqué (${candidate.finishReason})`);
+        const text = candidate.content?.parts?.[0]?.text;
+        if (!text) throw new Error(`Gemini: réponse vide`);
 
-      const text = candidate.content?.parts?.[0]?.text;
-      if (!text) throw new Error(`Gemini: réponse vide — ${JSON.stringify(data).slice(0, 300)}`);
+        if (model !== GEMINI_MODELS[0])
+          console.log(`  ✓ ${model} utilisé (fallback)`);
 
-      return {
-        text,
-        tokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.candidatesTokenCount || 0),
-        model,
-      };
-    } catch (err) {
-      lastError = err;
-      // 503 = saturé, 429 = quota → essayer le modèle suivant après 1s
-      if (err.status === 503 || err.status === 429) {
-        console.warn(`  ⚠️  ${model} indisponible (${err.status}) — essai du modèle suivant…`);
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
+        return {
+          text,
+          tokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.candidatesTokenCount || 0),
+          model,
+        };
+      } catch (err) {
+        lastError = err;
+
+        if (err.status === 503 || err.status === 429) {
+          // Saturation / quota — backoff exponentiel avec jitter
+          const delay = Math.min(3000 * Math.pow(2, attempt) + Math.random() * 500, 30000);
+          console.warn(`  ⚠️  ${model} surchargé (${err.status}) — tentative ${attempt + 1}/${MAX_RETRIES}, attente ${Math.round(delay / 1000)}s`);
+          await new Promise(r => setTimeout(r, delay));
+          // Dernier retry épuisé → passer au modèle suivant
+          if (attempt === MAX_RETRIES - 1)
+            console.warn(`  → Tous les essais épuisés pour ${model}, modèle suivant`);
+        } else if (err.status === 404) {
+          // Modèle non disponible sur cette clé → modèle suivant immédiatement
+          console.warn(`  ⚠️  ${model} non trouvé (404) — modèle suivant`);
+          break;
+        } else {
+          throw err; // 400, 401, 403 → ne pas réessayer
+        }
       }
-      throw err; // Autre erreur (401, 400…) → on ne tente pas le fallback
     }
   }
-  throw lastError;
+
+  throw lastError || new Error('Tous les modèles Gemini sont temporairement indisponibles — réessayez dans quelques minutes');
 }
 
 async function callGemini(fileBase64, mimeType, prompt) {
